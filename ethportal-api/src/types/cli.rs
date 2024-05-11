@@ -19,6 +19,7 @@ pub const DEFAULT_UTP_TRANSFER_LIMIT: usize = 50;
 pub const BEACON_NETWORK: &str = "beacon";
 pub const HISTORY_NETWORK: &str = "history";
 pub const STATE_NETWORK: &str = "state";
+pub const VERKLE_NETWORK: &str = "verkle";
 const DEFAULT_SUBNETWORKS: &str = "history";
 pub const DEFAULT_NETWORK: &str = "mainnet";
 pub const DEFAULT_STORAGE_CAPACITY_MB: &str = "100";

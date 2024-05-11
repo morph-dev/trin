@@ -10,6 +10,7 @@ impl From<ProtocolLabel> for MetricLabel {
             ProtocolLabel::History => "history",
             ProtocolLabel::TransactionGossip => "transaction_gossip",
             ProtocolLabel::CanonicalIndices => "canonical_indices",
+            ProtocolLabel::Verkle => "verkle",
             ProtocolLabel::Beacon => "beacon",
             ProtocolLabel::Utp => "utp",
         }
@@ -93,6 +94,7 @@ pub enum ProtocolLabel {
     History,
     TransactionGossip,
     CanonicalIndices,
+    Verkle,
     Beacon,
     Utp,
 }
@@ -126,6 +128,7 @@ impl From<&ProtocolId> for ProtocolLabel {
             ProtocolId::History => Self::History,
             ProtocolId::TransactionGossip => Self::TransactionGossip,
             ProtocolId::CanonicalIndices => Self::CanonicalIndices,
+            ProtocolId::Verkle => Self::Verkle,
             ProtocolId::Beacon => Self::Beacon,
             ProtocolId::Utp => Self::Utp,
         }

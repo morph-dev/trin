@@ -17,6 +17,7 @@ pub mod state;
 mod test_utils;
 pub mod types;
 pub mod utils;
+pub mod verkle;
 mod web3;
 
 pub use crate::discv5::{Discv5ApiClient, Discv5ApiServer};
@@ -24,6 +25,7 @@ pub use beacon::{BeaconNetworkApiClient, BeaconNetworkApiServer};
 pub use eth::{EthApiClient, EthApiServer};
 pub use history::{HistoryNetworkApiClient, HistoryNetworkApiServer};
 pub use state::{StateNetworkApiClient, StateNetworkApiServer};
+pub use verkle::{VerkleNetworkApiClient, VerkleNetworkApiServer};
 pub use web3::{Web3ApiClient, Web3ApiServer};
 
 pub use types::content_key::{
@@ -40,9 +42,10 @@ pub use types::content_key::{
 pub use types::{
     consensus,
     consensus::light_client,
+    content_key::verkle::VerkleContentKey,
     content_value::{
         beacon::BeaconContentValue, error::ContentValueError, history::HistoryContentValue,
-        state::StateContentValue,
+        state::StateContentValue, verkle::VerkleContentValue,
     },
     execution::{block_body::*, header::*, receipts::*},
 };
