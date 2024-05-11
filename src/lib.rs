@@ -6,7 +6,7 @@ use std::sync::Arc;
 #[cfg(windows)]
 use ethportal_api::types::cli::Web3TransportType;
 use ethportal_api::{
-    types::cli::{TrinConfig, BEACON_NETWORK, HISTORY_NETWORK, STATE_NETWORK},
+    types::cli::{TrinConfig, BEACON_NETWORK, HISTORY_NETWORK, STATE_NETWORK, VERKLE_NETWORK},
     utils::bytes::hex_encode,
 };
 use portalnet::{
@@ -25,6 +25,7 @@ use trin_state::initialize_state_network;
 use trin_storage::PortalStorageConfig;
 use trin_utils::version::get_trin_version;
 use trin_validation::oracle::HeaderOracle;
+use trin_verkle::initialize_verkle_network;
 use utp_rs::socket::UtpSocket;
 
 pub async fn run_trin(
@@ -117,6 +118,29 @@ pub async fn run_trin(
             (None, None, None, None, None)
         };
 
+    // Initialize verkle sub-network service and event handlers, if selected
+    let (
+        verkle_handler,
+        verkle_network_task,
+        verkle_event_tx,
+        verkle_jsonrpc_tx,
+        verkle_event_stream,
+    ) = if trin_config
+        .portal_subnetworks
+        .contains(&VERKLE_NETWORK.to_string())
+    {
+        initialize_verkle_network(
+            &discovery,
+            utp_socket.clone(),
+            portalnet_config.clone(),
+            storage_config.clone(),
+            header_oracle.clone(),
+        )
+        .await?
+    } else {
+        (None, None, None, None, None)
+    };
+
     // Initialize trin-beacon sub-network service and event handlers, if selected
     let (
         beacon_handler,
@@ -171,11 +195,15 @@ pub async fn run_trin(
         jsonrpc_discovery,
         history_jsonrpc_tx,
         state_jsonrpc_tx,
+        verkle_jsonrpc_tx,
         beacon_jsonrpc_tx,
     )
     .await?;
 
     if let Some(handler) = state_handler {
+        tokio::spawn(async move { handler.handle_client_queries().await });
+    }
+    if let Some(handler) = verkle_handler {
         tokio::spawn(async move { handler.handle_client_queries().await });
     }
     if let Some(handler) = history_handler {
@@ -191,6 +219,7 @@ pub async fn run_trin(
             talk_req_rx,
             (history_event_tx, history_event_stream),
             (state_event_tx, state_event_stream),
+            (verkle_event_tx, verkle_event_stream),
             (beacon_event_tx, beacon_event_stream),
             utp_talk_reqs_tx,
             trin_config.network.clone(),
@@ -203,6 +232,9 @@ pub async fn run_trin(
         tokio::spawn(network);
     }
     if let Some(network) = state_network_task {
+        tokio::spawn(network);
+    }
+    if let Some(network) = verkle_network_task {
         tokio::spawn(network);
     }
     if let Some(network) = beacon_network_task {

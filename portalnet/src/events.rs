@@ -59,6 +59,8 @@ pub struct PortalnetEvents {
     pub history_handle: OverlayHandle,
     /// State network send & receive handles.
     pub state_handle: OverlayHandle,
+    /// Verkle network send & receive handles.
+    pub verkle_handle: OverlayHandle,
     /// Beacon network send & receive handles.
     pub beacon_handle: OverlayHandle,
     /// Send TalkReq events with "utp" protocol id to `UtpListener`
@@ -72,6 +74,7 @@ impl PortalnetEvents {
         talk_req_receiver: mpsc::Receiver<TalkRequest>,
         history_channels: OverlayChannels,
         state_channels: OverlayChannels,
+        verkle_handle: OverlayChannels,
         beacon_channels: OverlayChannels,
         utp_talk_reqs: mpsc::UnboundedSender<TalkRequest>,
         network_spec: Arc<NetworkSpec>,
@@ -80,6 +83,7 @@ impl PortalnetEvents {
             talk_req_receiver,
             history_handle: history_channels.into(),
             state_handle: state_channels.into(),
+            verkle_handle: verkle_handle.into(),
             beacon_handle: beacon_channels.into(),
             utp_talk_reqs,
             network_spec,
@@ -93,6 +97,9 @@ impl PortalnetEvents {
             receivers.push(rx);
         }
         if let Some(rx) = self.state_handle.rx.take() {
+            receivers.push(rx);
+        }
+        if let Some(rx) = self.verkle_handle.rx.take() {
             receivers.push(rx);
         }
         if let Some(rx) = self.beacon_handle.rx.take() {
@@ -143,6 +150,11 @@ impl PortalnetEvents {
                     request.into(),
                     "state",
                 ),
+                ProtocolId::Verkle => self.send_overlay_request(
+                    self.verkle_handle.tx.as_ref(),
+                    request.into(),
+                    "verkle",
+                ),
                 ProtocolId::Utp => {
                     if let Err(err) = self.utp_talk_reqs.send(request) {
                         error!(%err, "Error forwarding talk request to uTP socket");
@@ -169,7 +181,12 @@ impl PortalnetEvents {
     fn dispatch_overlay_event(&self, event: EventEnvelope) {
         use OverlayRequest::Event;
 
-        let all_protocols = vec![ProtocolId::History, ProtocolId::Beacon, ProtocolId::State];
+        let all_protocols = vec![
+            ProtocolId::History,
+            ProtocolId::Beacon,
+            ProtocolId::State,
+            ProtocolId::Verkle,
+        ];
         let mut recipients = event
             .destination
             .as_ref()
@@ -191,6 +208,13 @@ impl PortalnetEvents {
         }
         if recipients.contains(&ProtocolId::State) {
             self.send_overlay_request(self.state_handle.tx.as_ref(), Event(event.clone()), "state");
+        }
+        if recipients.contains(&ProtocolId::Verkle) {
+            self.send_overlay_request(
+                self.verkle_handle.tx.as_ref(),
+                Event(event.clone()),
+                "verkle",
+            );
         }
         if recipients.contains(&ProtocolId::History) {
             self.send_overlay_request(

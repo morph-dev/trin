@@ -1,0 +1,20 @@
+[package]
+name = "trin-verkle"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/ethereum/trin/tree/master/trin-verkle"
+license = "GPL-3.0"
+readme = "README.md"
+keywords = ["ethereum", "portal-network"]
+categories = ["cryptography::cryptocurrencies"]
+description = "Verkle state network subprotocol for Trin."
+authors = ["https://github.com/ethereum/trin/graphs/contributors"]
+
+[dependencies]
+anyhow = "1.0.68"
+ethportal-api = { path = "../ethportal-api" }
+portalnet = { path = "../portalnet" }
+tokio = {version = "1.14.0", features = ["full"]}
+trin-storage = { path = "../trin-storage" }
+trin-validation = { path = "../trin-validation" }
+utp-rs = { git = "https://github.com/ethereum/utp", tag = "v0.1.0-alpha.12" }

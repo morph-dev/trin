@@ -12,6 +12,7 @@ mod history_rpc;
 mod rpc_server;
 mod serde;
 mod state_rpc;
+mod verkle_rpc;
 mod web3_rpc;
 
 use crate::jsonrpsee::server::ServerBuilder;
@@ -24,12 +25,18 @@ use eth_rpc::EthApi;
 use ethportal_api::{
     jsonrpsee,
     types::{
-        cli::{TrinConfig, Web3TransportType, BEACON_NETWORK, HISTORY_NETWORK, STATE_NETWORK},
-        jsonrpc::request::{BeaconJsonRpcRequest, HistoryJsonRpcRequest, StateJsonRpcRequest},
+        cli::{
+            TrinConfig, Web3TransportType, BEACON_NETWORK, HISTORY_NETWORK, STATE_NETWORK,
+            VERKLE_NETWORK,
+        },
+        jsonrpc::request::{
+            BeaconJsonRpcRequest, HistoryJsonRpcRequest, StateJsonRpcRequest, VerkleJsonRpcRequest,
+        },
     },
 };
 use history_rpc::HistoryNetworkApi;
 use state_rpc::StateNetworkApi;
+use verkle_rpc::VerkleNetworkApi;
 use web3_rpc::Web3Api;
 
 use crate::rpc_server::RpcServerConfig;
@@ -46,6 +53,7 @@ pub async fn launch_jsonrpc_server(
     discv5: Arc<Discovery>,
     history_handler: Option<mpsc::UnboundedSender<HistoryJsonRpcRequest>>,
     state_handler: Option<mpsc::UnboundedSender<StateJsonRpcRequest>>,
+    verkle_handler: Option<mpsc::UnboundedSender<VerkleJsonRpcRequest>>,
     beacon_handler: Option<mpsc::UnboundedSender<BeaconJsonRpcRequest>>,
 ) -> Result<RpcServerHandle, RpcError> {
     // Discv5 and Web3 modules are enabled with every network
@@ -58,6 +66,7 @@ pub async fn launch_jsonrpc_server(
                 modules.push(PortalRpcModule::Eth);
             }
             STATE_NETWORK => modules.push(PortalRpcModule::State),
+            VERKLE_NETWORK => modules.push(PortalRpcModule::Verkle),
             BEACON_NETWORK => modules.push(PortalRpcModule::Beacon),
             _ => panic!("Unexpected network type: {network}"),
         }
@@ -70,6 +79,7 @@ pub async fn launch_jsonrpc_server(
                 .maybe_with_history(history_handler)
                 .maybe_with_beacon(beacon_handler)
                 .maybe_with_state(state_handler)
+                .maybe_with_verkle(verkle_handler)
                 .build(transport);
 
             RpcServerConfig::default()
@@ -94,6 +104,7 @@ pub async fn launch_jsonrpc_server(
                 .maybe_with_history(history_handler)
                 .maybe_with_beacon(beacon_handler)
                 .maybe_with_state(state_handler)
+                .maybe_with_verkle(verkle_handler)
                 .build(transport);
 
             let rpc_server_config = RpcServerConfig::default()
