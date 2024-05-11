@@ -7774,6 +7774,7 @@ dependencies = [
  "trin-storage",
  "trin-utils",
  "trin-validation",
+ "trin-verkle",
  "ureq",
  "url",
  "utp-rs",
@@ -7958,6 +7959,19 @@ dependencies = [
  "tokio",
  "tree_hash",
  "tree_hash_derive",
+]
+
+[[package]]
+name = "trin-verkle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ethportal-api",
+ "portalnet",
+ "tokio",
+ "trin-storage",
+ "trin-validation",
+ "utp-rs",
 ]
 
 [[package]]

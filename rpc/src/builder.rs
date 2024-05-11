@@ -2,12 +2,15 @@ use crate::{
     errors::{RpcError, WsHttpSamePortError},
     jsonrpsee::{Methods, RpcModule},
     rpc_server::{RpcServerConfig, RpcServerHandle},
-    BeaconNetworkApi, Discv5Api, EthApi, HistoryNetworkApi, StateNetworkApi, Web3Api,
+    BeaconNetworkApi, Discv5Api, EthApi, HistoryNetworkApi, StateNetworkApi, VerkleNetworkApi,
+    Web3Api,
 };
 use ethportal_api::{
-    types::jsonrpc::request::{BeaconJsonRpcRequest, HistoryJsonRpcRequest, StateJsonRpcRequest},
+    types::jsonrpc::request::{
+        BeaconJsonRpcRequest, HistoryJsonRpcRequest, StateJsonRpcRequest, VerkleJsonRpcRequest,
+    },
     BeaconNetworkApiServer, Discv5ApiServer, EthApiServer, HistoryNetworkApiServer,
-    StateNetworkApiServer, Web3ApiServer,
+    StateNetworkApiServer, VerkleNetworkApiServer, Web3ApiServer,
 };
 use portalnet::discovery::Discovery;
 use serde::Deserialize;
@@ -36,6 +39,8 @@ pub enum PortalRpcModule {
     History,
     /// `state` module
     State,
+    /// 'verkle' module
+    Verkle,
     /// `web3_` module
     Web3,
 }
@@ -287,6 +292,8 @@ pub struct RpcModuleBuilder {
     beacon_tx: Option<mpsc::UnboundedSender<BeaconJsonRpcRequest>>,
     /// State protocol
     state_tx: Option<mpsc::UnboundedSender<StateJsonRpcRequest>>,
+    /// Verkle protocol
+    verkle_tx: Option<mpsc::UnboundedSender<VerkleJsonRpcRequest>>,
 }
 
 impl RpcModuleBuilder {
@@ -297,6 +304,7 @@ impl RpcModuleBuilder {
             history_tx: None,
             beacon_tx: None,
             state_tx: None,
+            verkle_tx: None,
         }
     }
 
@@ -313,6 +321,14 @@ impl RpcModuleBuilder {
         state_tx: Option<mpsc::UnboundedSender<StateJsonRpcRequest>>,
     ) -> Self {
         self.state_tx = state_tx;
+        self
+    }
+
+    pub fn maybe_with_verkle(
+        mut self,
+        verkle_tx: Option<mpsc::UnboundedSender<VerkleJsonRpcRequest>>,
+    ) -> Self {
+        self.verkle_tx = verkle_tx;
         self
     }
 
@@ -339,6 +355,11 @@ impl RpcModuleBuilder {
 
     pub fn with_state(mut self, state_tx: mpsc::UnboundedSender<StateJsonRpcRequest>) -> Self {
         self.state_tx = Some(state_tx);
+        self
+    }
+
+    pub fn with_verkle(mut self, verkle_tx: mpsc::UnboundedSender<VerkleJsonRpcRequest>) -> Self {
+        self.verkle_tx = Some(verkle_tx);
         self
     }
 
@@ -434,6 +455,13 @@ impl RpcModuleBuilder {
                                 .clone()
                                 .expect("State protocol not initialized");
                             StateNetworkApi::new(state_tx).into_rpc().into()
+                        }
+                        PortalRpcModule::Verkle => {
+                            let verkle_tx = self
+                                .verkle_tx
+                                .clone()
+                                .expect("Verkle protocol not initialized");
+                            VerkleNetworkApi::new(verkle_tx).into_rpc().into()
                         }
                         PortalRpcModule::Web3 => Web3Api.into_rpc().into(),
                     })
