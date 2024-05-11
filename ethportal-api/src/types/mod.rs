@@ -17,3 +17,4 @@ pub mod portal_wire;
 pub mod query_trace;
 pub mod state;
 pub mod state_trie;
+pub mod verkle;

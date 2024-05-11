@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use validator::{Validate, ValidationError};
 
 use super::{
-    endpoints::{BeaconEndpoint, HistoryEndpoint, StateEndpoint},
+    endpoints::{BeaconEndpoint, HistoryEndpoint, StateEndpoint, VerkleEndpoint},
     params::Params,
 };
 
@@ -53,6 +53,13 @@ pub struct HistoryJsonRpcRequest {
 #[derive(Debug)]
 pub struct StateJsonRpcRequest {
     pub endpoint: StateEndpoint,
+    pub resp: Responder<Value, String>,
+}
+
+/// Verkle network JSON-RPC request
+#[derive(Debug)]
+pub struct VerkleJsonRpcRequest {
+    pub endpoint: VerkleEndpoint,
     pub resp: Responder<Value, String>,
 }
 

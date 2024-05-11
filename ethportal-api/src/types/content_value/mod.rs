@@ -8,6 +8,7 @@ pub mod constants;
 pub mod error;
 pub mod history;
 pub mod state;
+pub mod verkle;
 
 /// An encodable portal network content value.
 pub trait ContentValue: Sized {

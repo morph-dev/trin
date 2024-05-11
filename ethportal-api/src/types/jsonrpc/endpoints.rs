@@ -1,6 +1,6 @@
 use crate::{
     types::enr::Enr, BeaconContentKey, BeaconContentValue, HistoryContentKey, HistoryContentValue,
-    StateContentKey, StateContentValue,
+    StateContentKey, StateContentValue, VerkleContentKey, VerkleContentValue,
 };
 use discv5::enr::NodeId;
 
@@ -141,4 +141,45 @@ pub enum BeaconEndpoint {
     PaginateLocalContentKeys(u64, u64),
     /// params: [node_id]
     RecursiveFindNodes(NodeId),
+}
+
+/// Verkle network JSON-RPC endpoints. Start with "portal_verkle" prefix
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum VerkleEndpoint {
+    /// params: None
+    RoutingTableInfo,
+    /// params: [enr]
+    Ping(Enr),
+    /// params: [enr]
+    AddEnr(Enr),
+    /// params: [node_id]
+    DeleteEnr(NodeId),
+    /// params: [node_id]
+    GetEnr(NodeId),
+    /// params: [node_id]
+    LookupEnr(NodeId),
+    /// params: [enr, distances]
+    FindNodes(Enr, Vec<u16>),
+    /// params: [node_id]
+    RecursiveFindNodes(NodeId),
+    /// params: None
+    DataRadius,
+    /// params: content_key
+    LocalContent(VerkleContentKey),
+    /// params: [enr, content_key]
+    FindContent(Enr, VerkleContentKey),
+    /// params: content_key
+    RecursiveFindContent(VerkleContentKey),
+    /// params: content_key
+    TraceRecursiveFindContent(VerkleContentKey),
+    /// params: [content_key, content_value]
+    Store(VerkleContentKey, VerkleContentValue),
+    /// params: [enr, content_key]
+    Offer(Enr, VerkleContentKey, Option<VerkleContentValue>),
+    /// params: [content_key, content_value]
+    Gossip(VerkleContentKey, VerkleContentValue),
+    /// params: [content_key, content_value]
+    TraceGossip(VerkleContentKey, VerkleContentValue),
+    /// params: [offset, limit]
+    PaginateLocalContentKeys(u64, u64),
 }
