@@ -12,9 +12,13 @@ authors = ["https://github.com/ethereum/trin/graphs/contributors"]
 
 [dependencies]
 anyhow = "1.0.68"
+discv5 = { version = "0.4.1", features = ["serde"] }
 ethportal-api = { path = "../ethportal-api" }
+parking_lot = "0.11.2"
 portalnet = { path = "../portalnet" }
+serde_json = "1.0.89"
 tokio = {version = "1.14.0", features = ["full"]}
+tracing = "0.1.36"
 trin-storage = { path = "../trin-storage" }
 trin-validation = { path = "../trin-validation" }
 utp-rs = { git = "https://github.com/ethereum/utp", tag = "v0.1.0-alpha.12" }
