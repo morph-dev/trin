@@ -21,6 +21,7 @@ pub use utils::create_store;
 pub enum ContentType {
     History,
     State,
+    Verkle,
 }
 
 /// The version of the store. There should be exactly one implementation of the

@@ -8071,9 +8071,13 @@ name = "trin-verkle"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "discv5",
  "ethportal-api",
+ "parking_lot 0.11.2",
  "portalnet",
+ "serde_json",
  "tokio",
+ "tracing",
  "trin-storage",
  "trin-validation",
  "utp-rs",
