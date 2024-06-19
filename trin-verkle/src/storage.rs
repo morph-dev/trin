@@ -50,9 +50,10 @@ impl ContentStore for VerkleStorage {
 impl VerkleStorage {
     pub fn new(config: PortalStorageConfig) -> Result<Self, ContentStoreError> {
         let sql_connection_pool = config.sql_connection_pool.clone();
-        let config = IdIndexedV1StoreConfig::new(ContentType::Verkle, ProtocolId::Verkle, config);
+        let config =
+            IdIndexedV1StoreConfig::new(ContentType::VerkleState, ProtocolId::VerkleState, config);
         Ok(Self {
-            store: create_store(ContentType::Verkle, config, sql_connection_pool)?,
+            store: create_store(ContentType::VerkleState, config, sql_connection_pool)?,
         })
     }
 

@@ -150,7 +150,7 @@ impl PortalnetEvents {
                     request.into(),
                     "state",
                 ),
-                ProtocolId::Verkle => self.send_overlay_request(
+                ProtocolId::VerkleState => self.send_overlay_request(
                     self.verkle_handle.tx.as_ref(),
                     request.into(),
                     "verkle",
@@ -185,7 +185,7 @@ impl PortalnetEvents {
             ProtocolId::History,
             ProtocolId::Beacon,
             ProtocolId::State,
-            ProtocolId::Verkle,
+            ProtocolId::VerkleState,
         ];
         let mut recipients = event
             .destination
@@ -209,7 +209,7 @@ impl PortalnetEvents {
         if recipients.contains(&ProtocolId::State) {
             self.send_overlay_request(self.state_handle.tx.as_ref(), Event(event.clone()), "state");
         }
-        if recipients.contains(&ProtocolId::Verkle) {
+        if recipients.contains(&ProtocolId::VerkleState) {
             self.send_overlay_request(
                 self.verkle_handle.tx.as_ref(),
                 Event(event.clone()),

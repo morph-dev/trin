@@ -173,7 +173,6 @@ pub enum ProtocolId {
     History,
     TransactionGossip,
     CanonicalIndices,
-    Verkle,
     Beacon,
     Utp,
 }
@@ -247,7 +246,6 @@ impl fmt::Display for ProtocolId {
             ProtocolId::History => "History",
             ProtocolId::TransactionGossip => "Transaction Gossip",
             ProtocolId::CanonicalIndices => "Canonical Indices",
-            ProtocolId::Verkle => "Verkle",
             ProtocolId::Beacon => "Beacon",
             ProtocolId::Utp => "uTP",
         };
@@ -263,7 +261,6 @@ impl From<ProtocolId> for u8 {
             ProtocolId::History => 0,
             ProtocolId::TransactionGossip => 3,
             ProtocolId::CanonicalIndices => 4,
-            ProtocolId::Verkle => 5,
             ProtocolId::Beacon => 1,
             ProtocolId::Utp => 99,
         }
