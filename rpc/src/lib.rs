@@ -66,7 +66,7 @@ pub async fn launch_jsonrpc_server(
                 modules.push(PortalRpcModule::Eth);
             }
             STATE_NETWORK => modules.push(PortalRpcModule::State),
-            VERKLE_NETWORK => modules.push(PortalRpcModule::Verkle),
+            VERKLE_NETWORK => modules.push(PortalRpcModule::VerkleState),
             BEACON_NETWORK => modules.push(PortalRpcModule::Beacon),
             _ => panic!("Unexpected network type: {network}"),
         }

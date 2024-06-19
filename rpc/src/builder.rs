@@ -39,8 +39,8 @@ pub enum PortalRpcModule {
     History,
     /// `state` module
     State,
-    /// 'verkle' module
-    Verkle,
+    /// 'verkle_state' module
+    VerkleState,
     /// `web3_` module
     Web3,
 }
@@ -456,7 +456,7 @@ impl RpcModuleBuilder {
                                 .expect("State protocol not initialized");
                             StateNetworkApi::new(state_tx).into_rpc().into()
                         }
-                        PortalRpcModule::Verkle => {
+                        PortalRpcModule::VerkleState => {
                             let verkle_tx = self
                                 .verkle_tx
                                 .clone()

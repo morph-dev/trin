@@ -52,7 +52,7 @@ impl VerkleNetwork {
             discovery,
             utp_socket,
             storage,
-            ProtocolId::Verkle,
+            ProtocolId::VerkleState,
             validator,
         )
         .await;
