@@ -12,7 +12,7 @@ pub enum ContentInfo {
     ConnectionId { connection_id: u16 },
     #[serde(rename_all = "camelCase")]
     Content {
-        content: VerkleContentValue,
+        content: Box<VerkleContentValue>,
         utp_transfer: bool,
     },
     #[serde(rename_all = "camelCase")]

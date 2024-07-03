@@ -285,7 +285,7 @@ async fn recursive_find_content(
         }))
     } else {
         Ok(json!(ContentInfo::Content {
-            content,
+            content: Box::new(content),
             utp_transfer
         }))
     }

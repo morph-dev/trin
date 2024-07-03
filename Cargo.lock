@@ -572,6 +572,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3d1d046238990b9cf5bcde22a3fb3584ee5cf65fb2765f454ed428c7a0063da"
 
 [[package]]
+name = "ark-bls12-381"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c775f0d12169cba7aae4caeb547bb6a50781c7449a8aa53793827c9ec4abf488"
+dependencies = [
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "ark-serialize 0.4.2",
+ "ark-std 0.4.0",
+]
+
+[[package]]
+name = "ark-ec"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "defd9a439d56ac24968cca0571f598a61bc8c55f71d50a89cda591cb750670ba"
+dependencies = [
+ "ark-ff 0.4.2",
+ "ark-poly",
+ "ark-serialize 0.4.2",
+ "ark-std 0.4.0",
+ "derivative",
+ "hashbrown 0.13.2",
+ "itertools 0.10.5",
+ "num-traits",
+ "rayon",
+ "zeroize",
+]
+
+[[package]]
+name = "ark-ed-on-bls12-381-bandersnatch"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9cde0f2aa063a2a5c28d39b47761aa102bda7c13c84fc118a61b87c7b2f785c"
+dependencies = [
+ "ark-bls12-381",
+ "ark-ec",
+ "ark-ff 0.4.2",
+ "ark-std 0.4.0",
+]
+
+[[package]]
 name = "ark-ff"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -605,6 +647,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "paste",
+ "rayon",
  "rustc_version 0.4.0",
  "zeroize",
 ]
@@ -655,6 +698,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-poly"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d320bfc44ee185d899ccbadfa8bc31aab923ce1558716e1997a1e74057fe86bf"
+dependencies = [
+ "ark-ff 0.4.2",
+ "ark-serialize 0.4.2",
+ "ark-std 0.4.0",
+ "derivative",
+ "hashbrown 0.13.2",
+]
+
+[[package]]
 name = "ark-serialize"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -670,9 +726,21 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb7b85a02b83d2f22f89bd5cac66c9c89474240cb6207cb1efc16d098e822a5"
 dependencies = [
+ "ark-serialize-derive",
  "ark-std 0.4.0",
  "digest 0.10.7",
  "num-bigint",
+]
+
+[[package]]
+name = "ark-serialize-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae3281bc6d0fd7e549af32b52511e1302185bd688fd3359fa36423346ff682ea"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -693,6 +761,7 @@ checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
 dependencies = [
  "num-traits",
  "rand 0.8.5",
+ "rayon",
 ]
 
 [[package]]
@@ -1041,6 +1110,18 @@ dependencies = [
  "miniz_oxide",
  "object",
  "rustc-demangle",
+]
+
+[[package]]
+name = "banderwagon"
+version = "0.1.0"
+source = "git+https://github.com/crate-crypto/rust-verkle.git?rev=442174edeb69f7827047132306d302345df12b83#442174edeb69f7827047132306d302345df12b83"
+dependencies = [
+ "ark-ec",
+ "ark-ed-on-bls12-381-bandersnatch",
+ "ark-ff 0.4.2",
+ "ark-serialize 0.4.2",
+ "rayon",
 ]
 
 [[package]]
@@ -2769,6 +2850,7 @@ dependencies = [
  "lazy_static",
  "nanotemplate",
  "once_cell",
+ "portal-verkle-trie",
  "quickcheck",
  "rand 0.8.5",
  "reth-rpc-types",
@@ -2783,19 +2865,20 @@ dependencies = [
  "sha2 0.10.8",
  "sha3 0.9.1",
  "snap",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "superstruct",
  "test-log",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.18",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
  "tree_hash_derive",
  "trin-utils",
  "ureq",
  "url",
  "validator",
+ "verkle-core",
 ]
 
 [[package]]
@@ -2823,7 +2906,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.18",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
  "trin",
  "trin-history",
  "trin-state",
@@ -3324,6 +3407,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
  "ahash 0.7.8",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
+dependencies = [
+ "ahash 0.8.11",
 ]
 
 [[package]]
@@ -4276,13 +4368,13 @@ dependencies = [
  "serde_yaml",
  "snowbridge-milagro-bls",
  "ssz-rs",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "strum",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.18",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
 ]
 
 [[package]]
@@ -5162,7 +5254,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "surf",
  "test-log",
  "tokio",
@@ -5173,6 +5265,21 @@ dependencies = [
  "trin-utils",
  "trin-validation",
  "url",
+]
+
+[[package]]
+name = "portal-verkle-trie"
+version = "0.1.0"
+source = "git+https://github.com/morph-dev/portal-verkle.git?rev=a65e04cf6f2ae02b06884888054540d79816caa7#a65e04cf6f2ae02b06884888054540d79816caa7"
+dependencies = [
+ "alloy-primitives",
+ "derive_more",
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
+ "once_cell",
+ "sha2 0.10.8",
+ "ssz_types 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "verkle-core",
 ]
 
 [[package]]
@@ -5205,7 +5312,7 @@ dependencies = [
  "serde",
  "serial_test",
  "smallvec",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "stunclient",
  "tempfile",
  "test-log",
@@ -6903,6 +7010,23 @@ dependencies = [
 [[package]]
 name = "ssz_types"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "625b20de2d4b3891e6972f4ce5061cb11bd52b3479270c4b177c134b571194a9"
+dependencies = [
+ "derivative",
+ "ethereum_serde_utils",
+ "ethereum_ssz",
+ "itertools 0.10.5",
+ "serde",
+ "serde_derive",
+ "smallvec",
+ "tree_hash 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "typenum",
+]
+
+[[package]]
+name = "ssz_types"
+version = "0.6.0"
 source = "git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe#2a5922de75f00746890bf4ea9ad663c9d5d58efe"
 dependencies = [
  "derivative",
@@ -6912,7 +7036,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "smallvec",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
  "typenum",
 ]
 
@@ -7813,6 +7937,17 @@ dependencies = [
 [[package]]
 name = "tree_hash"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "134d6b24a5b829f30b5ee7de05ba7384557f5f6b00e29409cdf2392f93201bfa"
+dependencies = [
+ "ethereum-types",
+ "ethereum_hashing",
+ "smallvec",
+]
+
+[[package]]
+name = "tree_hash"
+version = "0.6.0"
 source = "git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730#8aaf8bb4184148768d48e2cfbbdd0b95d1da8730"
 dependencies = [
  "alloy-primitives",
@@ -7866,7 +8001,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.18",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
  "trin-beacon",
  "trin-history",
  "trin-state",
@@ -7897,7 +8032,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "snap",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "tokio",
  "tracing",
  "trin-metrics",
@@ -7956,13 +8091,13 @@ dependencies = [
  "rstest",
  "serde_json",
  "serial_test",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "test-log",
  "tokio",
  "tokio-test",
  "tracing",
  "tracing-subscriber 0.3.18",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
  "trin-storage",
  "trin-validation",
  "ureq",
@@ -8060,9 +8195,9 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "ssz_types",
+ "ssz_types 0.6.0 (git+https://github.com/KolbyML/ssz_types.git?rev=2a5922de75f00746890bf4ea9ad663c9d5d58efe)",
  "tokio",
- "tree_hash",
+ "tree_hash 0.6.0 (git+https://github.com/KolbyML/tree_hash.git?rev=8aaf8bb4184148768d48e2cfbbdd0b95d1da8730)",
  "tree_hash_derive",
 ]
 
@@ -8408,6 +8543,26 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "verkle-core"
+version = "0.1.0"
+source = "git+https://github.com/morph-dev/portal-verkle.git?rev=a65e04cf6f2ae02b06884888054540d79816caa7#a65e04cf6f2ae02b06884888054540d79816caa7"
+dependencies = [
+ "alloy-primitives",
+ "ark-ec",
+ "ark-ed-on-bls12-381-bandersnatch",
+ "ark-ff 0.4.2",
+ "ark-serialize 0.4.2",
+ "banderwagon",
+ "derive_more",
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
+ "once_cell",
+ "serde",
+ "sha2 0.10.8",
+ "ssz_types 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "version_check"

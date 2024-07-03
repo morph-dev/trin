@@ -1,18 +1,37 @@
+use portal_verkle_trie::nodes::portal::ssz::nodes::{
+    BranchBundleNode, BranchBundleNodeWithProof, BranchFragmentNode, BranchFragmentNodeWithProof,
+    LeafBundleNode, LeafBundleNodeWithProof, LeafFragmentNode, LeafFragmentNodeWithProof,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use ssz::{Decode, Encode};
+use ssz_derive::{Decode, Encode};
 
-use crate::ContentValue;
+use crate::{utils::bytes::hex_encode, ContentValue, ContentValueError};
 
 /// Verkle content value.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum VerkleContentValue {}
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+#[ssz(enum_behaviour = "union")]
+pub enum VerkleContentValue {
+    BranchBundle(BranchBundleNode),
+    BranchBundleWithProof(BranchBundleNodeWithProof),
+    BranchFragment(BranchFragmentNode),
+    BranchFragmentWithProof(BranchFragmentNodeWithProof),
+    LeafBundle(LeafBundleNode),
+    LeafBundleWithProof(LeafBundleNodeWithProof),
+    LeafFragment(LeafFragmentNode),
+    LeafFragmentWithProof(LeafFragmentNodeWithProof),
+}
 
 impl ContentValue for VerkleContentValue {
     fn encode(&self) -> Vec<u8> {
-        todo!()
+        self.as_ssz_bytes()
     }
 
-    fn decode(_buf: &[u8]) -> Result<Self, crate::ContentValueError> {
-        todo!()
+    fn decode(buf: &[u8]) -> Result<Self, ContentValueError> {
+        Self::from_ssz_bytes(buf).map_err(|err| ContentValueError::DecodeSsz {
+            decode_error: err,
+            input: hex_encode(buf),
+        })
     }
 }
 
