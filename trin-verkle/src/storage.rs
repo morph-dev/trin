@@ -1,6 +1,6 @@
 use ethportal_api::{
     types::{distance::Distance, portal_wire::ProtocolId, verkle::PaginateLocalContentInfo},
-    OverlayContentKey,
+    OverlayContentKey, VerkleContentKey,
 };
 use trin_storage::{
     error::ContentStoreError,
@@ -11,26 +11,24 @@ use trin_storage::{
 /// Storage layer for the verkle network. Encapsulates verkle network specific data and logic.
 #[derive(Debug)]
 pub struct VerkleStorage {
-    store: IdIndexedV1Store,
+    store: IdIndexedV1Store<VerkleContentKey>,
 }
 
 impl ContentStore for VerkleStorage {
-    fn get<K: OverlayContentKey>(&self, key: &K) -> Result<Option<Vec<u8>>, ContentStoreError> {
+    type Key = VerkleContentKey;
+
+    fn get(&self, key: &Self::Key) -> Result<Option<Vec<u8>>, ContentStoreError> {
         self.store.lookup_content_value(&key.content_id().into())
     }
 
-    fn put<K: OverlayContentKey, V: AsRef<[u8]>>(
-        &mut self,
-        _key: K,
-        _value: V,
-    ) -> Result<(), ContentStoreError> {
+    fn put<V: AsRef<[u8]>>(&mut self, _key: Self::Key, _value: V) -> Result<(), ContentStoreError> {
         // TODO: add verkle specific implementation
         todo!()
     }
 
-    fn is_key_within_radius_and_unavailable<K: OverlayContentKey>(
+    fn is_key_within_radius_and_unavailable(
         &self,
-        key: &K,
+        key: &Self::Key,
     ) -> Result<ShouldWeStoreContent, ContentStoreError> {
         let content_id = ContentId::from(key.content_id());
         if self.store.distance_to_content_id(&content_id) > self.store.radius() {
