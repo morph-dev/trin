@@ -27,7 +27,7 @@ mod events;
 mod jsonrpc;
 mod network;
 mod storage;
-mod validator;
+mod validation;
 
 type VerkleHandler = Option<VerkleRequestHandler>;
 type VerkleNetworkTask = Option<JoinHandle<()>>;

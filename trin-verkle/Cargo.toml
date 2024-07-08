@@ -11,14 +11,17 @@ description = "Verkle state network subprotocol for Trin."
 authors = ["https://github.com/ethereum/trin/graphs/contributors"]
 
 [dependencies]
+alloy-primitives = { version = "0.7.0", features = ["getrandom"] }
 anyhow = "1.0.68"
 discv5 = { version = "0.4.1", features = ["serde"] }
 ethportal-api = { path = "../ethportal-api" }
 parking_lot = "0.11.2"
 portalnet = { path = "../portalnet" }
 serde_json = "1.0.89"
+thiserror = "1.0.57"
 tokio = {version = "1.14.0", features = ["full"]}
 tracing = "0.1.36"
 trin-storage = { path = "../trin-storage" }
 trin-validation = { path = "../trin-validation" }
 utp-rs = { git = "https://github.com/ethereum/utp", tag = "v0.1.0-alpha.12" }
+verkle-core = { git = "https://github.com/morph-dev/portal-verkle.git", rev = "a65e04cf6f2ae02b06884888054540d79816caa7" }

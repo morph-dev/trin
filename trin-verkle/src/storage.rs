@@ -1,6 +1,6 @@
 use ethportal_api::{
     types::{distance::Distance, portal_wire::ProtocolId, verkle::PaginateLocalContentInfo},
-    OverlayContentKey, VerkleContentKey,
+    ContentValue, OverlayContentKey, VerkleContentKey, VerkleContentValue,
 };
 use trin_storage::{
     error::ContentStoreError,
@@ -21,9 +21,10 @@ impl ContentStore for VerkleStorage {
         self.store.lookup_content_value(&key.content_id().into())
     }
 
-    fn put<V: AsRef<[u8]>>(&mut self, _key: Self::Key, _value: V) -> Result<(), ContentStoreError> {
-        // TODO: add verkle specific implementation
-        todo!()
+    fn put<V: AsRef<[u8]>>(&mut self, key: Self::Key, value: V) -> Result<(), ContentStoreError> {
+        let value = VerkleContentValue::decode(value.as_ref())?;
+        // Assume that Validator already validated key/value pair.
+        self.store.insert(&key, value.into_storing_value().encode())
     }
 
     fn is_key_within_radius_and_unavailable(

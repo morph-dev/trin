@@ -24,6 +24,16 @@ pub enum VerkleContentKey {
     LeafFragment(LeafFragmentKey),
 }
 
+impl VerkleContentKey {
+    pub fn commitment(&self) -> &Point {
+        match &self {
+            VerkleContentKey::Bundle(commitment) => commitment,
+            VerkleContentKey::BranchFragment(commitment) => commitment,
+            VerkleContentKey::LeafFragment(leaf_fragment_key) => &leaf_fragment_key.commitment,
+        }
+    }
+}
+
 impl OverlayContentKey for VerkleContentKey {
     fn content_id(&self) -> [u8; 32] {
         let mut sha256 = Sha256::new();

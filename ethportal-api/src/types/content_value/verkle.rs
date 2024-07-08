@@ -22,6 +22,44 @@ pub enum VerkleContentValue {
     LeafFragmentWithProof(LeafFragmentNodeWithProof),
 }
 
+impl VerkleContentValue {
+    pub fn has_proof(&self) -> bool {
+        match &self {
+            VerkleContentValue::BranchBundle(_)
+            | VerkleContentValue::BranchFragment(_)
+            | VerkleContentValue::LeafBundle(_)
+            | VerkleContentValue::LeafFragment(_) => false,
+
+            VerkleContentValue::BranchBundleWithProof(_)
+            | VerkleContentValue::BranchFragmentWithProof(_)
+            | VerkleContentValue::LeafBundleWithProof(_)
+            | VerkleContentValue::LeafFragmentWithProof(_) => true,
+        }
+    }
+
+    pub fn into_storing_value(self) -> Self {
+        match self {
+            VerkleContentValue::BranchBundle(_)
+            | VerkleContentValue::BranchFragment(_)
+            | VerkleContentValue::LeafBundle(_)
+            | VerkleContentValue::LeafFragment(_) => self,
+
+            VerkleContentValue::BranchBundleWithProof(node_with_proof) => {
+                Self::BranchBundle(node_with_proof.node)
+            }
+            VerkleContentValue::BranchFragmentWithProof(node_with_proof) => {
+                Self::BranchFragment(node_with_proof.node)
+            }
+            VerkleContentValue::LeafBundleWithProof(node_with_proof) => {
+                Self::LeafBundle(node_with_proof.node)
+            }
+            VerkleContentValue::LeafFragmentWithProof(node_with_proof) => {
+                Self::LeafFragment(node_with_proof.node)
+            }
+        }
+    }
+}
+
 impl ContentValue for VerkleContentValue {
     fn encode(&self) -> Vec<u8> {
         self.as_ssz_bytes()

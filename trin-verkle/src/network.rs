@@ -15,7 +15,7 @@ use trin_storage::PortalStorageConfig;
 use trin_validation::oracle::HeaderOracle;
 use utp_rs::socket::UtpSocket;
 
-use crate::{storage::VerkleStorage, validator::VerkleValidator};
+use crate::{storage::VerkleStorage, validation::VerkleValidator};
 
 /// Verkle network layer on top of the overlay protocol. Encapsulates Verkle network specific data
 /// and logic.
