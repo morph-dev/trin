@@ -1,9 +1,5 @@
 use portal_verkle_primitives::{
-    nodes::{
-        BranchBundleNode, BranchBundleNodeWithProof, BranchFragmentNode,
-        BranchFragmentNodeWithProof, LeafBundleNode, LeafBundleNodeWithProof, LeafFragmentNode,
-        LeafFragmentNodeWithProof,
-    },
+    nodes::{PortalVerkleNode, PortalVerkleNodeWithProof},
     Point,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -15,72 +11,17 @@ use crate::{utils::bytes::hex_encode, ContentValue, ContentValueError};
 /// Verkle content value.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 #[ssz(enum_behaviour = "union")]
+#[allow(clippy::large_enum_variant)]
 pub enum VerkleContentValue {
-    BranchBundle(BranchBundleNode),
-    BranchBundleWithProof(BranchBundleNodeWithProof),
-    BranchFragment(BranchFragmentNode),
-    BranchFragmentWithProof(BranchFragmentNodeWithProof),
-    LeafBundle(LeafBundleNode),
-    LeafBundleWithProof(LeafBundleNodeWithProof),
-    LeafFragment(LeafFragmentNode),
-    LeafFragmentWithProof(LeafFragmentNodeWithProof),
+    Node(PortalVerkleNode),
+    NodeWithProof(PortalVerkleNodeWithProof),
 }
 
 impl VerkleContentValue {
-    pub fn has_proof(&self) -> bool {
-        match &self {
-            VerkleContentValue::BranchBundle(_)
-            | VerkleContentValue::BranchFragment(_)
-            | VerkleContentValue::LeafBundle(_)
-            | VerkleContentValue::LeafFragment(_) => false,
-
-            VerkleContentValue::BranchBundleWithProof(_)
-            | VerkleContentValue::BranchFragmentWithProof(_)
-            | VerkleContentValue::LeafBundleWithProof(_)
-            | VerkleContentValue::LeafFragmentWithProof(_) => true,
-        }
-    }
-
     pub fn commitment(&self) -> &Point {
         match &self {
-            VerkleContentValue::BranchBundle(node) => node.commitment(),
-            VerkleContentValue::BranchBundleWithProof(node_with_proof) => {
-                node_with_proof.node.commitment()
-            }
-            VerkleContentValue::BranchFragment(node) => node.commitment(),
-            VerkleContentValue::BranchFragmentWithProof(node_with_proof) => {
-                node_with_proof.node.commitment()
-            }
-            VerkleContentValue::LeafBundle(node) => node.commitment(),
-            VerkleContentValue::LeafBundleWithProof(node_with_proof) => {
-                node_with_proof.node.commitment()
-            }
-            VerkleContentValue::LeafFragment(node) => node.commitment(),
-            VerkleContentValue::LeafFragmentWithProof(node_with_proof) => {
-                node_with_proof.node.commitment()
-            }
-        }
-    }
-
-    pub fn into_storing_value(self) -> Self {
-        match self {
-            VerkleContentValue::BranchBundle(_)
-            | VerkleContentValue::BranchFragment(_)
-            | VerkleContentValue::LeafBundle(_)
-            | VerkleContentValue::LeafFragment(_) => self,
-
-            VerkleContentValue::BranchBundleWithProof(node_with_proof) => {
-                Self::BranchBundle(node_with_proof.node)
-            }
-            VerkleContentValue::BranchFragmentWithProof(node_with_proof) => {
-                Self::BranchFragment(node_with_proof.node)
-            }
-            VerkleContentValue::LeafBundleWithProof(node_with_proof) => {
-                Self::LeafBundle(node_with_proof.node)
-            }
-            VerkleContentValue::LeafFragmentWithProof(node_with_proof) => {
-                Self::LeafFragment(node_with_proof.node)
-            }
+            Self::Node(node) => node.commitment(),
+            Self::NodeWithProof(node_with_proof) => node_with_proof.commitment(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use alloy_primitives::B256;
+use ethportal_api::{ContentValue, VerkleContentValue};
 use portal_verkle_primitives::nodes::NodeVerificationError;
 use thiserror::Error;
 
@@ -8,19 +8,13 @@ pub enum VerkleValidationError {
     #[error("Content key has commitment 'Zero'")]
     ZeroCommitment,
 
-    #[error("Wrong commitment: {commitment:?}, expected {expected_commitment:?}")]
-    InvalidCommitment {
-        commitment: B256,
-        expected_commitment: B256,
-    },
-
     #[error(
         "Invalid value type for key type: {content_key_type}. value: {}",
-        value_hex
+        value.to_hex()
     )]
     InvalidContentValueType {
         content_key_type: &'static str,
-        value_hex: String,
+        value: Box<VerkleContentValue>,
     },
 
     #[error("Error while verifying node: {0}")]

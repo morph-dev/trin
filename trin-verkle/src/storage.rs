@@ -23,8 +23,19 @@ impl ContentStore for VerkleStorage {
 
     fn put<V: AsRef<[u8]>>(&mut self, key: Self::Key, value: V) -> Result<(), ContentStoreError> {
         let value = VerkleContentValue::decode(value.as_ref())?;
-        // Assume that Validator already validated key/value pair.
-        self.store.insert(&key, value.into_storing_value().encode())
+
+        let value = match value {
+            VerkleContentValue::Node(_) => {
+                return Err(ContentStoreError::InvalidData {
+                    message: format!("Expected NodeWithProof, but received {value:?} instead"),
+                });
+            }
+            VerkleContentValue::NodeWithProof(node_with_proof) => {
+                VerkleContentValue::Node(node_with_proof.into_node())
+            }
+        };
+
+        self.store.insert(&key, value.encode())
     }
 
     fn is_key_within_radius_and_unavailable(
