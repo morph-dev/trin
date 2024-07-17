@@ -2850,7 +2850,7 @@ dependencies = [
  "lazy_static",
  "nanotemplate",
  "once_cell",
- "portal-verkle-trie",
+ "portal-verkle-primitives",
  "quickcheck",
  "rand 0.8.5",
  "reth-rpc-types",
@@ -2878,7 +2878,6 @@ dependencies = [
  "ureq",
  "url",
  "validator",
- "verkle-core",
 ]
 
 [[package]]
@@ -5268,18 +5267,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "portal-verkle-trie"
+name = "portal-verkle-primitives"
 version = "0.1.0"
-source = "git+https://github.com/morph-dev/portal-verkle.git?rev=a65e04cf6f2ae02b06884888054540d79816caa7#a65e04cf6f2ae02b06884888054540d79816caa7"
+source = "git+https://github.com/morph-dev/portal-verkle-primitives.git?rev=a5c1afd5395ee9404103d975ee0f5871062bb4c8#a5c1afd5395ee9404103d975ee0f5871062bb4c8"
 dependencies = [
  "alloy-primitives",
+ "ark-ec",
+ "ark-ed-on-bls12-381-bandersnatch",
+ "ark-ff 0.4.2",
+ "ark-serialize 0.4.2",
+ "banderwagon",
  "derive_more",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "once_cell",
+ "serde",
  "sha2 0.10.8",
  "ssz_types 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "verkle-core",
+ "thiserror",
 ]
 
 [[package]]
@@ -8210,6 +8215,7 @@ dependencies = [
  "discv5",
  "ethportal-api",
  "parking_lot 0.11.2",
+ "portal-verkle-primitives",
  "portalnet",
  "serde_json",
  "thiserror",
@@ -8218,7 +8224,6 @@ dependencies = [
  "trin-storage",
  "trin-validation",
  "utp-rs",
- "verkle-core",
 ]
 
 [[package]]
@@ -8546,26 +8551,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "verkle-core"
-version = "0.1.0"
-source = "git+https://github.com/morph-dev/portal-verkle.git?rev=a65e04cf6f2ae02b06884888054540d79816caa7#a65e04cf6f2ae02b06884888054540d79816caa7"
-dependencies = [
- "alloy-primitives",
- "ark-ec",
- "ark-ed-on-bls12-381-bandersnatch",
- "ark-ff 0.4.2",
- "ark-serialize 0.4.2",
- "banderwagon",
- "derive_more",
- "ethereum_ssz",
- "ethereum_ssz_derive",
- "once_cell",
- "serde",
- "sha2 0.10.8",
- "ssz_types 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
 
 [[package]]
 name = "version_check"

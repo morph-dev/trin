@@ -1,6 +1,10 @@
-use portal_verkle_trie::nodes::portal::ssz::nodes::{
-    BranchBundleNode, BranchBundleNodeWithProof, BranchFragmentNode, BranchFragmentNodeWithProof,
-    LeafBundleNode, LeafBundleNodeWithProof, LeafFragmentNode, LeafFragmentNodeWithProof,
+use portal_verkle_primitives::{
+    nodes::{
+        BranchBundleNode, BranchBundleNodeWithProof, BranchFragmentNode,
+        BranchFragmentNodeWithProof, LeafBundleNode, LeafBundleNodeWithProof, LeafFragmentNode,
+        LeafFragmentNodeWithProof,
+    },
+    Point,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ssz::{Decode, Encode};
@@ -34,6 +38,27 @@ impl VerkleContentValue {
             | VerkleContentValue::BranchFragmentWithProof(_)
             | VerkleContentValue::LeafBundleWithProof(_)
             | VerkleContentValue::LeafFragmentWithProof(_) => true,
+        }
+    }
+
+    pub fn commitment(&self) -> &Point {
+        match &self {
+            VerkleContentValue::BranchBundle(node) => node.commitment(),
+            VerkleContentValue::BranchBundleWithProof(node_with_proof) => {
+                node_with_proof.node.commitment()
+            }
+            VerkleContentValue::BranchFragment(node) => node.commitment(),
+            VerkleContentValue::BranchFragmentWithProof(node_with_proof) => {
+                node_with_proof.node.commitment()
+            }
+            VerkleContentValue::LeafBundle(node) => node.commitment(),
+            VerkleContentValue::LeafBundleWithProof(node_with_proof) => {
+                node_with_proof.node.commitment()
+            }
+            VerkleContentValue::LeafFragment(node) => node.commitment(),
+            VerkleContentValue::LeafFragmentWithProof(node_with_proof) => {
+                node_with_proof.node.commitment()
+            }
         }
     }
 

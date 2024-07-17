@@ -1,10 +1,10 @@
 use std::{fmt, hash::Hash};
 
+use portal_verkle_primitives::{Point, Stem};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest as Sha2Digest, Sha256};
 use ssz::{Decode, DecodeError, Encode};
 use ssz_derive::{Decode, Encode};
-use verkle_core::{Point, Stem};
 
 use crate::{ContentKeyError, OverlayContentKey};
 
