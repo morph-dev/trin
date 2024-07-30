@@ -93,6 +93,7 @@ pub trait VerkleNetworkApi {
     ) -> RpcResult<TraceGossipInfo>;
 
     /// Send an OFFER request with given ContentKey, to the designated peer and wait for a response.
+    /// Does not store the content locally.
     /// Returns the content keys bitlist upon successful content transmission or empty bitlist
     /// receive.
     #[method(name = "verkleOffer")]
@@ -100,7 +101,7 @@ pub trait VerkleNetworkApi {
         &self,
         enr: Enr,
         content_key: VerkleContentKey,
-        content_value: Option<VerkleContentValue>,
+        content_value: VerkleContentValue,
     ) -> RpcResult<AcceptInfo>;
 
     /// Store content key with a content data to the local database.

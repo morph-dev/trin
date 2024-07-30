@@ -197,13 +197,14 @@ impl VerkleNetworkApiServer for VerkleNetworkApi {
     }
 
     /// Send an OFFER request with given ContentKey, to the designated peer and wait for a response.
+    /// Does not store content locally.
     /// Returns the content keys bitlist upon successful content transmission or empty bitlist
     /// receive.
     async fn offer(
         &self,
         enr: Enr,
         content_key: VerkleContentKey,
-        content_value: Option<VerkleContentValue>,
+        content_value: VerkleContentValue,
     ) -> RpcResult<AcceptInfo> {
         let endpoint = VerkleEndpoint::Offer(enr, content_key, content_value);
         let result = self.proxy_query_to_verkle_subnet(endpoint).await?;

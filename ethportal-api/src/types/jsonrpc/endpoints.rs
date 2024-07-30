@@ -175,7 +175,7 @@ pub enum VerkleEndpoint {
     /// params: [content_key, content_value]
     Store(VerkleContentKey, VerkleContentValue),
     /// params: [enr, content_key]
-    Offer(Enr, VerkleContentKey, Option<VerkleContentValue>),
+    Offer(Enr, VerkleContentKey, VerkleContentValue),
     /// params: [content_key, content_value]
     Gossip(VerkleContentKey, VerkleContentValue),
     /// params: [content_key, content_value]
