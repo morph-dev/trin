@@ -3,7 +3,7 @@ use std::sync::Arc;
 use alloy_primitives::B256;
 use anyhow::{anyhow, bail};
 use ethportal_api::{ContentValue, VerkleContentKey, VerkleContentValue};
-use portal_verkle_primitives::nodes::{PortalVerkleNode, PortalVerkleNodeWithProof};
+use portal_verkle_primitives::portal::{PortalVerkleNode, PortalVerkleNodeWithProof};
 use tokio::sync::RwLock;
 use tracing::debug;
 use trin_validation::{

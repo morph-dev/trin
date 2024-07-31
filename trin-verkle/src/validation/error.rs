@@ -1,5 +1,5 @@
 use ethportal_api::{ContentValue, VerkleContentValue};
-use portal_verkle_primitives::nodes::NodeVerificationError;
+use portal_verkle_primitives::portal::NodeVerificationError;
 use thiserror::Error;
 
 // An error that happened while validating verkle state content

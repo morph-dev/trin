@@ -1,5 +1,5 @@
 use portal_verkle_primitives::{
-    nodes::{PortalVerkleNode, PortalVerkleNodeWithProof},
+    portal::{PortalVerkleNode, PortalVerkleNodeWithProof},
     Point,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
