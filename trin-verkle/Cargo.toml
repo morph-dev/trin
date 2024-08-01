@@ -17,7 +17,7 @@ discv5 = { version = "0.4.1", features = ["serde"] }
 ethportal-api = { path = "../ethportal-api" }
 parking_lot = "0.11.2"
 portalnet = { path = "../portalnet" }
-portal-verkle-primitives = { git = "https://github.com/morph-dev/portal-verkle-primitives.git", rev = "65ce73011fd2636733271219057c9dc194800ded" }
+portal-verkle-primitives = { git = "https://github.com/morph-dev/portal-verkle-primitives.git", rev = "244a975baca2af42d4a596f7f6f83bc26c35223b" }
 serde_json = "1.0.89"
 thiserror = "1.0.57"
 tokio = {version = "1.14.0", features = ["full"]}

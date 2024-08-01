@@ -5278,7 +5278,7 @@ dependencies = [
 [[package]]
 name = "portal-verkle-primitives"
 version = "0.1.0"
-source = "git+https://github.com/morph-dev/portal-verkle-primitives.git?rev=65ce73011fd2636733271219057c9dc194800ded#65ce73011fd2636733271219057c9dc194800ded"
+source = "git+https://github.com/morph-dev/portal-verkle-primitives.git?rev=244a975baca2af42d4a596f7f6f83bc26c35223b#244a975baca2af42d4a596f7f6f83bc26c35223b"
 dependencies = [
  "alloy-primitives",
  "ark-ec",

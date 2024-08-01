@@ -69,14 +69,16 @@ impl Validator<VerkleContentKey> for VerkleValidator {
                 Ok(ValidationResult::new(/* valid_for_storing= */ false))
             }
             VerkleContentValue::NodeWithProof(node_with_proof) => {
-                let state_root = self.get_state_root(&node_with_proof.block_hash()).await;
+                let mut state_root = self.get_state_root(&node_with_proof.block_hash()).await;
+                if state_root.is_zero() {
+                    state_root = self.get_state_root_from_proof(node_with_proof);
+                }
+
                 match content_key {
                     VerkleContentKey::Bundle(commitment) => match node_with_proof {
-                        PortalVerkleNodeWithProof::BranchBundle(node_with_proof) => node_with_proof
-                            .verify(
-                                commitment,
-                                &self.get_state_root(&node_with_proof.block_hash).await,
-                            )?,
+                        PortalVerkleNodeWithProof::BranchBundle(node_with_proof) => {
+                            node_with_proof.verify(commitment, &state_root)?
+                        }
                         PortalVerkleNodeWithProof::LeafBundle(node_with_proof) => {
                             node_with_proof.verify(commitment, &state_root)?
                         }
@@ -118,5 +120,26 @@ impl VerkleValidator {
         // TODO: Implement using header_oracle
         debug!("Fetching state root is not yet implemented");
         B256::ZERO
+    }
+
+    /// TODO: This is wrong! We shouldn't extract root from the proof.
+    fn get_state_root_from_proof(&self, node_with_proof: &PortalVerkleNodeWithProof) -> B256 {
+        let root_commitment = match node_with_proof {
+            PortalVerkleNodeWithProof::BranchBundle(node) => {
+                node.trie_path.root().unwrap_or(node.node.commitment())
+            }
+            PortalVerkleNodeWithProof::BranchFragment(node) => {
+                node.trie_path.root().unwrap_or(&node.bundle_commitment)
+            }
+            PortalVerkleNodeWithProof::LeafBundle(node) => node
+                .trie_path
+                .root()
+                .expect("bundle leaf proof should have root"),
+            PortalVerkleNodeWithProof::LeafFragment(node) => node
+                .trie_path
+                .root()
+                .expect("fragment leaf proof should have root"),
+        };
+        root_commitment.into()
     }
 }
