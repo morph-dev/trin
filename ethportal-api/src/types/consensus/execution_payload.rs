@@ -1,4 +1,7 @@
-use super::serde::{de_hex_to_txs, de_number_to_u256, se_hex_to_number, se_txs_to_hex};
+use super::{
+    serde::{de_hex_to_txs, de_number_to_u256, se_hex_to_number, se_txs_to_hex},
+    verkle::execution_witness::ExecutionWitness,
+};
 use crate::{
     types::{
         bytes::ByteList32,
@@ -21,10 +24,9 @@ pub type Bloom = FixedVector<u8, typenum::U256>;
 pub type ExtraData = ByteList32;
 
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(
-            Default,
             Debug,
             Clone,
             PartialEq,
@@ -67,7 +69,7 @@ pub struct ExecutionPayload {
     #[serde(serialize_with = "se_txs_to_hex")]
     #[serde(deserialize_with = "de_hex_to_txs")]
     pub transactions: Transactions,
-    #[superstruct(only(Capella, Deneb))]
+    #[superstruct(only(Capella, Deneb, Verkle))]
     pub withdrawals: VariableList<Withdrawal, U16>,
     #[superstruct(only(Deneb))]
     #[serde(deserialize_with = "as_u64")]
@@ -75,6 +77,8 @@ pub struct ExecutionPayload {
     #[superstruct(only(Deneb))]
     #[serde(deserialize_with = "as_u64")]
     pub excess_blob_gas: u64,
+    #[superstruct(only(Verkle))]
+    pub execution_witness: ExecutionWitness,
 }
 
 impl ExecutionPayload {
@@ -85,6 +89,7 @@ impl ExecutionPayload {
             }
             ForkName::Capella => ExecutionPayloadCapella::from_ssz_bytes(bytes).map(Self::Capella),
             ForkName::Deneb => ExecutionPayloadDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => ExecutionPayloadVerkle::from_ssz_bytes(bytes).map(Self::Verkle),
         }
     }
 }
@@ -137,7 +142,7 @@ pub struct Withdrawal {
 }
 
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(derive(
         Default,
         Debug,
@@ -187,14 +192,14 @@ pub struct ExecutionPayloadHeader {
     pub block_hash: B256,
     #[superstruct(getter(copy))]
     pub transactions_root: B256,
-    #[superstruct(only(Capella, Deneb))]
+    #[superstruct(only(Capella, Deneb, Verkle))]
     #[superstruct(getter(copy))]
     pub withdrawals_root: B256,
-    #[superstruct(only(Deneb))]
+    #[superstruct(only(Deneb, Verkle))]
     #[superstruct(getter(copy))]
     #[serde(deserialize_with = "as_u64")]
     pub blob_gas_used: u64,
-    #[superstruct(only(Deneb))]
+    #[superstruct(only(Deneb, Verkle))]
     #[superstruct(getter(copy))]
     #[serde(deserialize_with = "as_u64")]
     pub excess_blob_gas: u64,
@@ -210,6 +215,9 @@ impl ExecutionPayloadHeader {
                 ExecutionPayloadHeaderCapella::from_ssz_bytes(bytes).map(Self::Capella)
             }
             ForkName::Deneb => ExecutionPayloadHeaderDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => {
+                ExecutionPayloadHeaderVerkle::from_ssz_bytes(bytes).map(Self::Verkle)
+            }
         }
     }
 }

@@ -18,6 +18,7 @@ pub enum ForkName {
     Bellatrix,
     Capella,
     Deneb,
+    Verkle,
 }
 
 impl TryFrom<ForkDigest> for ForkName {
@@ -28,6 +29,7 @@ impl TryFrom<ForkDigest> for ForkName {
             [0x0, 0x0, 0x0, 0x0] => Ok(ForkName::Bellatrix),
             [0xbb, 0xa4, 0xda, 0x96] => Ok(ForkName::Capella),
             [0x6a, 0x95, 0xa1, 0xa9] => Ok(ForkName::Deneb),
+            [0xff, 0xff, 0xff, 0xff] => Ok(ForkName::Verkle),
             _ => Err(ParseForkNameError(hex_encode(fork_digest))),
         }
     }
@@ -39,6 +41,7 @@ impl ForkName {
             ForkName::Bellatrix => [0x0, 0x0, 0x0, 0x0],
             ForkName::Capella => [0xbb, 0xa4, 0xda, 0x96],
             ForkName::Deneb => [0x6a, 0x95, 0xa1, 0xa9],
+            ForkName::Verkle => [0xff, 0xff, 0xff, 0xff],
         }
     }
 }
@@ -51,6 +54,7 @@ impl FromStr for ForkName {
             "bellatrix" | "merge" => ForkName::Bellatrix,
             "capella" => ForkName::Capella,
             "deneb" => ForkName::Deneb,
+            "verkle" => ForkName::Verkle,
             _ => return Err(format!("unknown fork name: {fork_name}")),
         })
     }
@@ -62,6 +66,7 @@ impl Display for ForkName {
             ForkName::Bellatrix => "bellatrix".fmt(f),
             ForkName::Capella => "capella".fmt(f),
             ForkName::Deneb => "deneb".fmt(f),
+            ForkName::Verkle => "verkle".fmt(f),
         }
     }
 }

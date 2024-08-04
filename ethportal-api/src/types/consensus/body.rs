@@ -3,6 +3,7 @@ use crate::{
         beacon_state::Epoch,
         execution_payload::{
             ExecutionPayloadBellatrix, ExecutionPayloadCapella, ExecutionPayloadDeneb,
+            ExecutionPayloadVerkle,
         },
         fork::ForkName,
         kzg_commitment::KzgCommitment,
@@ -34,7 +35,7 @@ pub type KzgCommitments = VariableList<KzgCommitment, MaxBlobCommitmentsPerBlock
 /// Types based off specs @
 /// https://github.com/ethereum/consensus-specs/blob/5970ae56a1cd50ea06049d8aad6bed74093d49d3/specs/bellatrix/beacon-chain.md
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(
             Debug,
@@ -68,7 +69,9 @@ pub struct BeaconBlockBody {
     pub execution_payload: ExecutionPayloadCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "execution_payload_deneb"))]
     pub execution_payload: ExecutionPayloadDeneb,
-    #[superstruct(only(Capella, Deneb))]
+    #[superstruct(only(Verkle), partial_getter(rename = "execution_payload_verkle"))]
+    pub execution_payload: ExecutionPayloadVerkle,
+    #[superstruct(only(Capella, Deneb, Verkle))]
     pub bls_to_execution_changes:
         VariableList<SignedBlsToExecutionChange, MaxBlsToExecutionChanges>,
     #[superstruct(only(Deneb))]
@@ -83,6 +86,7 @@ impl BeaconBlockBody {
             }
             ForkName::Capella => BeaconBlockBodyCapella::from_ssz_bytes(bytes).map(Self::Capella),
             ForkName::Deneb => BeaconBlockBodyDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => BeaconBlockBodyVerkle::from_ssz_bytes(bytes).map(Self::Verkle),
         }
     }
 }
@@ -171,6 +175,7 @@ pub struct Deposit {
 pub struct DepositData {
     pub pubkey: PubKey,
     pub withdrawal_credentials: B256,
+    #[serde(deserialize_with = "as_u64")]
     pub amount: u64,
     pub signature: BlsSignature,
 }
@@ -184,7 +189,9 @@ pub struct IndexedAttestation {
 
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize, Decode, Encode, TreeHash)]
 pub struct AttestationData {
+    #[serde(deserialize_with = "as_u64")]
     pub slot: u64,
+    #[serde(deserialize_with = "as_u64")]
     pub index: u64,
     pub beacon_block_root: B256,
     pub source: Checkpoint,
@@ -213,6 +220,7 @@ pub struct VoluntaryExit {
 #[derive(Debug, PartialEq, Clone, Default, Deserialize, Serialize, Decode, Encode, TreeHash)]
 pub struct Eth1Data {
     pub deposit_root: B256,
+    #[serde(deserialize_with = "as_u64")]
     pub deposit_count: u64,
     pub block_hash: B256,
 }

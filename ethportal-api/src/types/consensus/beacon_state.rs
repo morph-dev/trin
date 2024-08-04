@@ -1,7 +1,8 @@
 use crate::consensus::{
     body::{Checkpoint, Eth1Data},
     execution_payload::{
-        ExecutionPayloadHeaderBellatrix, ExecutionPayloadHeaderCapella, ExecutionPayloadHeaderDeneb,
+        ExecutionPayloadHeaderBellatrix, ExecutionPayloadHeaderCapella,
+        ExecutionPayloadHeaderDeneb, ExecutionPayloadHeaderVerkle,
     },
     fork::ForkName,
     header::BeaconBlockHeader,
@@ -37,7 +38,7 @@ pub type HistoricalRoots = VariableList<B256, HistoricalRootsLimit>;
 
 /// The state of the `BeaconChain` at some slot.
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(
             Clone,
@@ -93,9 +94,9 @@ pub struct BeaconState {
     pub slashings: FixedVector<u64, EpochsPerSlashingsVector>,
 
     // Participation (Altair and later)
-    #[superstruct(only(Bellatrix, Capella, Deneb))]
+    #[superstruct(only(Bellatrix, Capella, Deneb, Verkle))]
     pub previous_epoch_participation: VariableList<ParticipationFlags, ValidatorRegistryLimit>,
-    #[superstruct(only(Bellatrix, Capella, Deneb))]
+    #[superstruct(only(Bellatrix, Capella, Deneb, Verkle))]
     pub current_epoch_participation: VariableList<ParticipationFlags, ValidatorRegistryLimit>,
 
     // Finality
@@ -108,13 +109,13 @@ pub struct BeaconState {
     pub finalized_checkpoint: Checkpoint,
 
     // Inactivity
-    #[superstruct(only(Bellatrix, Capella, Deneb))]
+    #[superstruct(only(Bellatrix, Capella, Deneb, Verkle))]
     pub inactivity_scores: VariableList<u64, ValidatorRegistryLimit>,
 
     // Light-client sync committees
-    #[superstruct(only(Bellatrix, Capella, Deneb))]
+    #[superstruct(only(Bellatrix, Capella, Deneb, Verkle))]
     pub current_sync_committee: Arc<SyncCommittee>,
-    #[superstruct(only(Bellatrix, Capella, Deneb))]
+    #[superstruct(only(Bellatrix, Capella, Deneb, Verkle))]
     pub next_sync_committee: Arc<SyncCommittee>,
 
     // Execution
@@ -133,16 +134,21 @@ pub struct BeaconState {
         partial_getter(rename = "latest_execution_payload_header_deneb")
     )]
     pub latest_execution_payload_header: ExecutionPayloadHeaderDeneb,
+    #[superstruct(
+        only(Verkle),
+        partial_getter(rename = "latest_execution_payload_header_verkle")
+    )]
+    pub latest_execution_payload_header: ExecutionPayloadHeaderVerkle,
 
     // Capella
-    #[superstruct(only(Capella, Deneb), partial_getter(copy))]
+    #[superstruct(only(Capella, Deneb, Verkle), partial_getter(copy))]
     #[serde(deserialize_with = "as_u64")]
     pub next_withdrawal_index: u64,
-    #[superstruct(only(Capella, Deneb), partial_getter(copy))]
+    #[superstruct(only(Capella, Deneb, Verkle), partial_getter(copy))]
     #[serde(deserialize_with = "as_u64")]
     pub next_withdrawal_validator_index: u64,
     // Deep history valid from Capella onwards.
-    #[superstruct(only(Capella, Deneb))]
+    #[superstruct(only(Capella, Deneb, Verkle))]
     pub historical_summaries: HistoricalSummaries,
 }
 
@@ -152,6 +158,7 @@ impl BeaconState {
             ForkName::Bellatrix => BeaconStateBellatrix::from_ssz_bytes(bytes).map(Self::Bellatrix),
             ForkName::Capella => BeaconStateCapella::from_ssz_bytes(bytes).map(Self::Capella),
             ForkName::Deneb => BeaconStateDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => BeaconStateVerkle::from_ssz_bytes(bytes).map(Self::Verkle),
         }
     }
 }

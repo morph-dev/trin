@@ -1,11 +1,11 @@
-use crate::{
-    light_client::header::LightClientHeaderDeneb,
-    types::consensus::{
-        body::SyncAggregate,
-        fork::ForkName,
-        light_client::header::{LightClientHeaderBellatrix, LightClientHeaderCapella},
-        sync_committee::SyncCommittee,
+use crate::types::consensus::{
+    body::SyncAggregate,
+    fork::ForkName,
+    light_client::header::{
+        LightClientHeaderBellatrix, LightClientHeaderCapella, LightClientHeaderDeneb,
+        LightClientHeaderVerkle,
     },
+    sync_committee::SyncCommittee,
 };
 use alloy_primitives::B256;
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,7 @@ type NextSyncCommitteeProofLen = U5;
 pub type FinalizedRootProofLen = U6;
 
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(Debug, Clone, Serialize, PartialEq, Deserialize, Encode, Decode),
         serde(deny_unknown_fields),
@@ -38,6 +38,8 @@ pub struct LightClientUpdate {
     pub attested_header: LightClientHeaderCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "attested_header_deneb"))]
     pub attested_header: LightClientHeaderDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "attested_header_verkle"))]
+    pub attested_header: LightClientHeaderVerkle,
     /// The `SyncCommittee` used in the next period.
     pub next_sync_committee: SyncCommittee,
     /// Merkle proof for next sync committee
@@ -49,6 +51,8 @@ pub struct LightClientUpdate {
     pub finalized_header: LightClientHeaderCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "finalized_header_deneb"))]
     pub finalized_header: LightClientHeaderDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "finalized_header_verkle"))]
+    pub finalized_header: LightClientHeaderVerkle,
     /// Merkle proof attesting finalized header.
     pub finality_branch: FixedVector<B256, FinalizedRootProofLen>,
     /// current sync aggregate
@@ -66,6 +70,7 @@ impl LightClientUpdate {
             }
             ForkName::Capella => LightClientUpdateCapella::from_ssz_bytes(bytes).map(Self::Capella),
             ForkName::Deneb => LightClientUpdateDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => LightClientUpdateVerkle::from_ssz_bytes(bytes).map(Self::Verkle),
         }
     }
 }

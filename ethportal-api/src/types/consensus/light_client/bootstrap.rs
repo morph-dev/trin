@@ -1,6 +1,8 @@
 use crate::types::consensus::{
     fork::ForkName,
-    light_client::header::{LightClientHeaderBellatrix, LightClientHeaderCapella},
+    light_client::header::{
+        LightClientHeaderBellatrix, LightClientHeaderCapella, LightClientHeaderVerkle,
+    },
     sync_committee::SyncCommittee,
 };
 use alloy_primitives::B256;
@@ -15,7 +17,7 @@ pub type CurrentSyncCommitteeProofLen = U5;
 /// `LightClientBootstrap` object for the configured trusted block root.
 /// The bootstrap object is used to generate a local `LightClientStore`.
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(Debug, Clone, Serialize, PartialEq, Deserialize, Encode, Decode,),
         serde(deny_unknown_fields),
@@ -32,6 +34,8 @@ pub struct LightClientBootstrap {
     pub header: LightClientHeaderCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "header_deneb"))]
     pub header: LightClientHeaderCapella,
+    #[superstruct(only(Verkle), partial_getter(rename = "header_verkle"))]
+    pub header: LightClientHeaderVerkle,
     /// Current sync committee corresponding to `header.beacon.state_root`
     pub current_sync_committee: SyncCommittee,
     pub current_sync_committee_branch: FixedVector<B256, CurrentSyncCommitteeProofLen>,
@@ -47,6 +51,7 @@ impl LightClientBootstrap {
                 LightClientBootstrapCapella::from_ssz_bytes(bytes).map(Self::Capella)
             }
             ForkName::Deneb => LightClientBootstrapDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => LightClientBootstrapVerkle::from_ssz_bytes(bytes).map(Self::Verkle),
         }
     }
 }

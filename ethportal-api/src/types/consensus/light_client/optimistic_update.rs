@@ -1,9 +1,9 @@
-use crate::{
-    light_client::header::LightClientHeaderDeneb,
-    types::consensus::{
-        body::SyncAggregate,
-        fork::ForkName,
-        light_client::header::{LightClientHeaderBellatrix, LightClientHeaderCapella},
+use crate::types::consensus::{
+    body::SyncAggregate,
+    fork::ForkName,
+    light_client::header::{
+        LightClientHeaderBellatrix, LightClientHeaderCapella, LightClientHeaderDeneb,
+        LightClientHeaderVerkle,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use superstruct::superstruct;
 /// A LightClientOptimisticUpdate is the update we receive on each slot,
 /// it is based off the current unfinalized epoch and it is verified only against BLS signature.
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode,),
         serde(deny_unknown_fields),
@@ -31,6 +31,8 @@ pub struct LightClientOptimisticUpdate {
     pub attested_header: LightClientHeaderCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "attested_header_deneb"))]
     pub attested_header: LightClientHeaderDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "attested_header_verkle"))]
+    pub attested_header: LightClientHeaderVerkle,
     /// current sync aggregate
     pub sync_aggregate: SyncAggregate,
     /// Slot of the sync aggregated signature
@@ -49,6 +51,9 @@ impl LightClientOptimisticUpdate {
             }
             ForkName::Deneb => {
                 LightClientOptimisticUpdateDeneb::from_ssz_bytes(bytes).map(Self::Deneb)
+            }
+            ForkName::Verkle => {
+                LightClientOptimisticUpdateVerkle::from_ssz_bytes(bytes).map(Self::Verkle)
             }
         }
     }

@@ -1,8 +1,4 @@
 use crate::{
-    light_client::{
-        bootstrap::LightClientBootstrapDeneb, finality_update::LightClientFinalityUpdateDeneb,
-        optimistic_update::LightClientOptimisticUpdateDeneb, update::LightClientUpdateDeneb,
-    },
     types::{
         consensus::{
             fork::{ForkDigest, ForkName},
@@ -10,17 +6,23 @@ use crate::{
             light_client::{
                 bootstrap::{
                     LightClientBootstrap, LightClientBootstrapBellatrix,
-                    LightClientBootstrapCapella,
+                    LightClientBootstrapCapella, LightClientBootstrapDeneb,
+                    LightClientBootstrapVerkle,
                 },
                 finality_update::{
                     LightClientFinalityUpdate, LightClientFinalityUpdateBellatrix,
-                    LightClientFinalityUpdateCapella,
+                    LightClientFinalityUpdateCapella, LightClientFinalityUpdateDeneb,
+                    LightClientFinalityUpdateVerkle,
                 },
                 optimistic_update::{
                     LightClientOptimisticUpdate, LightClientOptimisticUpdateBellatrix,
-                    LightClientOptimisticUpdateCapella,
+                    LightClientOptimisticUpdateCapella, LightClientOptimisticUpdateDeneb,
+                    LightClientOptimisticUpdateVerkle,
                 },
-                update::{LightClientUpdate, LightClientUpdateBellatrix, LightClientUpdateCapella},
+                update::{
+                    LightClientUpdate, LightClientUpdateBellatrix, LightClientUpdateCapella,
+                    LightClientUpdateDeneb, LightClientUpdateVerkle,
+                },
             },
         },
         content_value::ContentValue,
@@ -58,6 +60,15 @@ impl From<LightClientBootstrapDeneb> for ForkVersionedLightClientBootstrap {
     }
 }
 
+impl From<LightClientBootstrapVerkle> for ForkVersionedLightClientBootstrap {
+    fn from(bootstrap: LightClientBootstrapVerkle) -> Self {
+        Self {
+            fork_name: ForkName::Verkle,
+            bootstrap: LightClientBootstrap::Verkle(bootstrap),
+        }
+    }
+}
+
 impl ForkVersionedLightClientBootstrap {
     pub fn encode(&self) -> Vec<u8> {
         let fork_digest = self.fork_name.as_fork_digest();
@@ -85,6 +96,9 @@ impl ForkVersionedLightClientBootstrap {
             ForkName::Deneb => {
                 LightClientBootstrap::Deneb(LightClientBootstrapDeneb::from_ssz_bytes(&bytes[4..])?)
             }
+            ForkName::Verkle => LightClientBootstrap::Verkle(
+                LightClientBootstrapVerkle::from_ssz_bytes(&bytes[4..])?,
+            ),
         };
 
         Ok(Self {
@@ -99,6 +113,7 @@ impl ForkVersionedLightClientBootstrap {
             LightClientBootstrap::Bellatrix(bootstrap) => bootstrap.header.beacon.slot,
             LightClientBootstrap::Capella(bootstrap) => bootstrap.header.beacon.slot,
             LightClientBootstrap::Deneb(bootstrap) => bootstrap.header.beacon.slot,
+            LightClientBootstrap::Verkle(bootstrap) => bootstrap.header.beacon.slot,
         }
     }
 }
@@ -160,6 +175,9 @@ impl ForkVersionedLightClientUpdate {
             }
             ForkName::Deneb => {
                 LightClientUpdate::Deneb(LightClientUpdateDeneb::from_ssz_bytes(&bytes[4..])?)
+            }
+            ForkName::Verkle => {
+                LightClientUpdate::Verkle(LightClientUpdateVerkle::from_ssz_bytes(&bytes[4..])?)
             }
         };
 
@@ -273,6 +291,15 @@ impl From<LightClientOptimisticUpdateDeneb> for ForkVersionedLightClientOptimist
     }
 }
 
+impl From<LightClientOptimisticUpdateVerkle> for ForkVersionedLightClientOptimisticUpdate {
+    fn from(update: LightClientOptimisticUpdateVerkle) -> Self {
+        Self {
+            fork_name: ForkName::Verkle,
+            update: LightClientOptimisticUpdate::Verkle(update),
+        }
+    }
+}
+
 impl ForkVersionedLightClientOptimisticUpdate {
     fn encode(&self) -> Vec<u8> {
         let fork_digest = self.fork_name.as_fork_digest();
@@ -300,6 +327,9 @@ impl ForkVersionedLightClientOptimisticUpdate {
             ),
             ForkName::Deneb => LightClientOptimisticUpdate::Deneb(
                 LightClientOptimisticUpdateDeneb::from_ssz_bytes(&buf[4..])?,
+            ),
+            ForkName::Verkle => LightClientOptimisticUpdate::Verkle(
+                LightClientOptimisticUpdateVerkle::from_ssz_bytes(&buf[4..])?,
             ),
         };
 
@@ -357,6 +387,14 @@ impl From<LightClientFinalityUpdateDeneb> for ForkVersionedLightClientFinalityUp
         }
     }
 }
+impl From<LightClientFinalityUpdateVerkle> for ForkVersionedLightClientFinalityUpdate {
+    fn from(update: LightClientFinalityUpdateVerkle) -> Self {
+        Self {
+            fork_name: ForkName::Verkle,
+            update: LightClientFinalityUpdate::Verkle(update),
+        }
+    }
+}
 
 impl ForkVersionedLightClientFinalityUpdate {
     fn encode(&self) -> Vec<u8> {
@@ -386,6 +424,9 @@ impl ForkVersionedLightClientFinalityUpdate {
             ForkName::Deneb => LightClientFinalityUpdate::Deneb(
                 LightClientFinalityUpdateDeneb::from_ssz_bytes(&buf[4..])?,
             ),
+            ForkName::Verkle => LightClientFinalityUpdate::Verkle(
+                LightClientFinalityUpdateVerkle::from_ssz_bytes(&buf[4..])?,
+            ),
         };
 
         Ok(Self {
@@ -400,6 +441,7 @@ impl ForkVersionedLightClientFinalityUpdate {
             LightClientFinalityUpdate::Bellatrix(update) => update.finalized_header.beacon.slot,
             LightClientFinalityUpdate::Capella(update) => update.finalized_header.beacon.slot,
             LightClientFinalityUpdate::Deneb(update) => update.finalized_header.beacon.slot,
+            LightClientFinalityUpdate::Verkle(update) => update.finalized_header.beacon.slot,
         }
     }
 }

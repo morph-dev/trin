@@ -1,5 +1,8 @@
 use crate::consensus::{
-    body::{BeaconBlockBodyBellatrix, BeaconBlockBodyCapella, BeaconBlockBodyDeneb},
+    body::{
+        BeaconBlockBodyBellatrix, BeaconBlockBodyCapella, BeaconBlockBodyDeneb,
+        BeaconBlockBodyVerkle,
+    },
     fork::ForkName,
     signature::BlsSignature,
 };
@@ -16,7 +19,7 @@ use tree_hash_derive::TreeHash;
 
 /// A block of the `BeaconChain`.
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(
             Debug,
@@ -56,6 +59,8 @@ pub struct BeaconBlock {
     pub body: BeaconBlockBodyCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "body_deneb"))]
     pub body: BeaconBlockBodyDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "body_verkle"))]
+    pub body: BeaconBlockBodyVerkle,
 }
 
 impl BeaconBlock {
@@ -64,6 +69,7 @@ impl BeaconBlock {
             ForkName::Bellatrix => BeaconBlockBellatrix::from_ssz_bytes(bytes).map(Self::Bellatrix),
             ForkName::Capella => BeaconBlockCapella::from_ssz_bytes(bytes).map(Self::Capella),
             ForkName::Deneb => BeaconBlockDeneb::from_ssz_bytes(bytes).map(Self::Deneb),
+            ForkName::Verkle => BeaconBlockVerkle::from_ssz_bytes(bytes).map(Self::Verkle),
         }
     }
 }
@@ -98,7 +104,7 @@ impl BeaconBlockBellatrix {
 
 /// A `BeaconBlock` and a signature from its proposer.
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(derive(
         Debug,
         Clone,
@@ -121,6 +127,8 @@ pub struct SignedBeaconBlock {
     pub message: BeaconBlockCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "message_deneb"))]
     pub message: BeaconBlockDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "message_verkle"))]
+    pub message: BeaconBlockVerkle,
     pub signature: BlsSignature,
 }
 
@@ -162,6 +170,9 @@ impl SignedBeaconBlock {
             }
             BeaconBlock::Deneb(message) => {
                 SignedBeaconBlock::Deneb(SignedBeaconBlockDeneb { message, signature })
+            }
+            BeaconBlock::Verkle(message) => {
+                SignedBeaconBlock::Verkle(SignedBeaconBlockVerkle { message, signature })
             }
         }
     }
@@ -279,6 +290,23 @@ mod test {
         let expected = decoder.decompress_vec(&compressed).unwrap();
         SignedBeaconBlock::from_ssz_bytes(&expected, ForkName::Deneb).unwrap();
         assert_eq!(content.as_ssz_bytes(), expected);
+    }
+
+    #[rstest]
+    #[case::slot_15(15)]
+    #[case::slot_32100(32100)]
+    fn serde_and_tree_hash_root_signed_beacon_block_verkle(#[case] slot: u64) {
+        let value = std::fs::read_to_string("src/assets/test/beacon_block_verkle_devnet6.json")
+            .expect("cannot find test asset");
+        let value: Value = serde_yaml::from_str(&value).unwrap();
+        let value = value
+            .as_object()
+            .unwrap()
+            .get(&slot.to_string())
+            .expect("Test case {slot} doesn't exist");
+        let content: SignedBeaconBlockVerkle = serde_json::from_value(value.clone()).unwrap();
+        content.tree_hash_root();
+        serde_json::to_value(content).unwrap();
     }
 
     #[test]

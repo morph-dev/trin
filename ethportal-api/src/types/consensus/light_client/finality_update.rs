@@ -1,12 +1,12 @@
-use crate::{
-    light_client::header::LightClientHeaderDeneb,
-    types::consensus::{
-        body::SyncAggregate,
-        fork::ForkName,
-        light_client::{
-            header::{LightClientHeaderBellatrix, LightClientHeaderCapella},
-            update::FinalizedRootProofLen,
+use crate::types::consensus::{
+    body::SyncAggregate,
+    fork::ForkName,
+    light_client::{
+        header::{
+            LightClientHeaderBellatrix, LightClientHeaderCapella, LightClientHeaderDeneb,
+            LightClientHeaderVerkle,
         },
+        update::FinalizedRootProofLen,
     },
 };
 use alloy_primitives::B256;
@@ -20,7 +20,7 @@ use superstruct::superstruct;
 /// A LightClientFinalityUpdate is the update that
 /// signal a new finalized beacon block header for the light client sync protocol.
 #[superstruct(
-    variants(Bellatrix, Capella, Deneb),
+    variants(Bellatrix, Capella, Deneb, Verkle),
     variant_attributes(
         derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode,),
         serde(deny_unknown_fields),
@@ -36,6 +36,8 @@ pub struct LightClientFinalityUpdate {
     pub attested_header: LightClientHeaderCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "attested_header_deneb"))]
     pub attested_header: LightClientHeaderDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "attested_header_verkle"))]
+    pub attested_header: LightClientHeaderVerkle,
     /// The last `LightClientHeader` from the last attested finalized block (end of epoch).
     #[superstruct(only(Bellatrix), partial_getter(rename = "finalized_header_bellatrix"))]
     pub finalized_header: LightClientHeaderBellatrix,
@@ -43,6 +45,8 @@ pub struct LightClientFinalityUpdate {
     pub finalized_header: LightClientHeaderCapella,
     #[superstruct(only(Deneb), partial_getter(rename = "finalized_header_deneb"))]
     pub finalized_header: LightClientHeaderDeneb,
+    #[superstruct(only(Verkle), partial_getter(rename = "finalized_header_verle"))]
+    pub finalized_header: LightClientHeaderVerkle,
     /// Merkle proof attesting finalized header.
     pub finality_branch: FixedVector<B256, FinalizedRootProofLen>,
     /// current sync aggregate
@@ -63,6 +67,9 @@ impl LightClientFinalityUpdate {
             }
             ForkName::Deneb => {
                 LightClientFinalityUpdateDeneb::from_ssz_bytes(bytes).map(Self::Deneb)
+            }
+            ForkName::Verkle => {
+                LightClientFinalityUpdateVerkle::from_ssz_bytes(bytes).map(Self::Verkle)
             }
         }
     }
