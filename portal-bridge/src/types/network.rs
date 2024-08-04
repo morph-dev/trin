@@ -6,6 +6,7 @@ pub enum NetworkKind {
     Beacon,
     History,
     State,
+    Verkle,
 }
 
 impl fmt::Display for NetworkKind {
@@ -14,6 +15,7 @@ impl fmt::Display for NetworkKind {
             Self::Beacon => write!(f, "beacon"),
             Self::History => write!(f, "history"),
             Self::State => write!(f, "state"),
+            Self::Verkle => write!(f, "verkle"),
         }
     }
 }
@@ -26,7 +28,10 @@ impl FromStr for NetworkKind {
             "beacon" => Ok(NetworkKind::Beacon),
             "history" => Ok(NetworkKind::History),
             "state" => Ok(NetworkKind::State),
-            _ => Err("Invalid network arg. Expected either 'beacon', 'history' or 'state'"),
+            "verkle" => Ok(NetworkKind::Verkle),
+            _ => {
+                Err("Invalid network arg. Expected either 'beacon', 'history', 'state' or 'verkle'")
+            }
         }
     }
 }

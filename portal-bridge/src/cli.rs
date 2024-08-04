@@ -349,7 +349,7 @@ mod test {
 
     #[test]
     #[should_panic(
-        expected = "Invalid network arg. Expected either 'beacon', 'history' or 'state'"
+        expected = "Invalid network arg. Expected either 'beacon', 'history', 'state' or 'verkle'"
     )]
     fn test_invalid_network_arg() {
         BridgeConfig::try_parse_from(["bridge", "--portal-subnetworks", "das", "trin"].iter())

@@ -5,7 +5,10 @@ use tracing::Instrument;
 use ethportal_api::jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use portal_bridge::{
     api::{consensus::ConsensusApi, execution::ExecutionApi},
-    bridge::{beacon::BeaconBridge, era1::Era1Bridge, history::HistoryBridge, state::StateBridge},
+    bridge::{
+        beacon::BeaconBridge, era1::Era1Bridge, history::HistoryBridge, state::StateBridge,
+        verkle::VerkleBridge,
+    },
     cli::BridgeConfig,
     types::{mode::BridgeMode, network::NetworkKind},
 };
@@ -86,6 +89,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             state_bridge
                 .launch()
                 .instrument(tracing::trace_span!("state"))
+                .await;
+        });
+        bridge_tasks.push(bridge_handle);
+    }
+
+    // Launch Verkle Network portal bridge
+    if bridge_config
+        .portal_subnetworks
+        .contains(&NetworkKind::Verkle)
+    {
+        let bridge_mode = bridge_config.mode.clone();
+        let portal_client_clone = portal_client.clone();
+        let epoch_acc_path = bridge_config.epoch_acc_path.clone();
+        let header_oracle = HeaderOracle::default();
+        let verkle_bridge = VerkleBridge::new(
+            bridge_mode,
+            portal_client_clone,
+            header_oracle,
+            epoch_acc_path,
+            bridge_config.gossip_limit,
+        )
+        .await?;
+        let bridge_handle = tokio::spawn(async move {
+            verkle_bridge
+                .launch()
+                .instrument(tracing::trace_span!("verkle"))
                 .await;
         });
         bridge_tasks.push(bridge_handle);
