@@ -27,6 +27,8 @@ jsonrpsee = { workspace = true, features = ["async-client", "client", "macros", 
 lazy_static.workspace = true
 parking_lot.workspace = true
 prometheus_exporter.workspace = true
+r2d2.workspace = true
+r2d2_sqlite.workspace = true
 rayon = "1.10.0"
 reqwest =  { workspace = true, features = ["stream"] }
 revm.workspace = true
@@ -39,6 +41,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 trin-evm.workspace = true
+trin-storage.workspace = true
 trin-utils.workspace = true
 
 [dev-dependencies]

@@ -52,6 +52,8 @@ pub enum TrinExecutionSubCommands {
     ImportState(ImportStateConfig),
     /// Export the current state of the node to a era2 file
     ExportState(ExportStateConfig),
+    /// Export the current state to content store
+    ExportToContentStore(ExportToContentStoreConfig),
 }
 
 #[derive(Args, Debug, Default, Clone, PartialEq)]
@@ -64,4 +66,17 @@ pub struct ImportStateConfig {
 pub struct ExportStateConfig {
     #[arg(long, help = "path to where the era2 state snapshot is located")]
     pub path_to_era2: PathBuf,
+}
+
+#[derive(Args, Debug, Default, Clone, PartialEq)]
+pub struct ExportToContentStoreConfig {
+    #[arg(long, help = "path to where content store is located")]
+    pub path_to_content_store: PathBuf,
+
+    #[arg(
+        long,
+        help = "whether to override existing content store",
+        default_value_t = false
+    )]
+    pub override_content_store: bool,
 }

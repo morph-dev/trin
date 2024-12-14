@@ -3,7 +3,10 @@ use tracing::info;
 use trin_execution::{
     cli::{TrinExecutionConfig, TrinExecutionSubCommands, APP_NAME},
     execution::TrinExecution,
-    subcommands::era2::{export::StateExporter, import::StateImporter},
+    subcommands::{
+        era2::{export::StateExporter, import::StateImporter},
+        export_to_content_store,
+    },
 };
 use trin_utils::{dir::setup_data_dir, log::init_tracing_logger};
 
@@ -46,6 +49,9 @@ async fn main() -> anyhow::Result<()> {
                     state_exporter.header().state_root,
                 );
                 return Ok(());
+            }
+            TrinExecutionSubCommands::ExportToContentStore(export_to_content_store) => {
+                return export_to_content_store::export(export_to_content_store, &data_dir).await;
             }
         }
     }

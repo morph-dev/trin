@@ -6892,6 +6892,8 @@ dependencies = [
  "lazy_static",
  "parking_lot 0.11.2",
  "prometheus_exporter",
+ "r2d2",
+ "r2d2_sqlite",
  "rayon",
  "reqwest",
  "revm",
@@ -6906,6 +6908,7 @@ dependencies = [
  "tracing",
  "tracing-test",
  "trin-evm",
+ "trin-storage",
  "trin-utils",
 ]
 
