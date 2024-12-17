@@ -5,7 +5,8 @@ use std::sync::Arc;
 use alloy::primitives::{Bytes, B256};
 use anyhow::{anyhow, Ok};
 use db::TrieWalkerDb;
-use eth_trie::{decode_node, node::Node};
+use eth_trie::node::Node;
+use ethportal_api::types::state_trie::EncodedTrieNode;
 
 use crate::types::trie_proof::TrieProof;
 
@@ -25,13 +26,17 @@ pub struct TrieWalker<DB: TrieWalkerDb> {
 
 impl<DB: TrieWalkerDb> TrieWalker<DB> {
     pub fn new(root_hash: B256, trie: Arc<DB>) -> anyhow::Result<Self> {
-        let root_node_trie = match trie.get(root_hash.as_slice())? {
+        let root_node_bytes = match trie.get(root_hash.as_slice())? {
             Some(root_node_trie) => root_node_trie,
             None => return Err(anyhow!("Root node not found in the database")),
         };
+        let encoded_node = EncodedTrieNode::from(root_node_bytes.to_vec());
+        let node = encoded_node.as_trie_node()?;
         let root_proof = TrieProof {
             path: vec![],
-            proof: vec![root_node_trie],
+            proof: vec![root_node_bytes],
+            last_encoded_node: encoded_node,
+            last_node: node,
         };
 
         Ok(Self {
@@ -56,9 +61,13 @@ impl<DB: TrieWalkerDb> TrieWalker<DB> {
             }
         };
 
+        let encoded_node = EncodedTrieNode::from(root_node_trie.to_vec());
+        let node = encoded_node.as_trie_node()?;
         let root_proof = TrieProof {
             path: vec![],
             proof: vec![root_node_trie],
+            last_encoded_node: encoded_node,
+            last_node: node,
         };
 
         Ok(Self {
@@ -77,8 +86,8 @@ impl<DB: TrieWalkerDb> TrieWalker<DB> {
         // We only need to process hash nodes, because if the node isn't a hash node then none of
         // its children is
         if let Node::Hash(hash) = node {
-            let encoded_trie_node = match self.trie.get(hash.hash.as_slice())? {
-                Some(encoded_trie_node) => encoded_trie_node,
+            let trie_node_bytes = match self.trie.get(hash.hash.as_slice())? {
+                Some(trie_node_bytes) => trie_node_bytes,
                 None => {
                     // If we are walking a partial trie, some nodes won't be available in the
                     // database
@@ -88,20 +97,24 @@ impl<DB: TrieWalkerDb> TrieWalker<DB> {
                     return Err(anyhow::anyhow!("Node not found in the database"));
                 }
             };
+            let encoded_trie_node = EncodedTrieNode::from(trie_node_bytes.to_vec());
+            let trie_node = encoded_trie_node.as_trie_node()?;
 
             // check that node decodes correctly and to correct variant
-            if matches!(
-                decode_node(&mut encoded_trie_node.as_ref())?,
-                Node::Empty | Node::Hash(_)
-            ) {
+            if matches!(trie_node, Node::Empty | Node::Hash(_)) {
                 return Err(anyhow::anyhow!(
                     "A node hash should never lead to an empty node or a hash node"
                 ));
             }
 
             let mut proof = partial_proof;
-            proof.push(encoded_trie_node);
-            self.stack.push(TrieProof { path, proof });
+            proof.push(trie_node_bytes);
+            self.stack.push(TrieProof {
+                path,
+                proof,
+                last_encoded_node: encoded_trie_node,
+                last_node: trie_node,
+            });
         }
         Ok(())
     }
@@ -116,23 +129,20 @@ impl<DB: TrieWalkerDb> Iterator for TrieWalker<DB> {
             None => return None,
         };
 
-        let TrieProof { path, proof } = &next_proof;
-        let last_node = proof.last().expect("Proof is empty");
-        let decoded_last_node =
-            decode_node(&mut last_node.as_ref()).expect("Failed to decode node");
-
+        let TrieProof {
+            path,
+            proof,
+            last_node,
+            ..
+        } = &next_proof;
         // Process any children of the node
-        match decoded_last_node {
+        match last_node {
             Node::Extension(extension) => {
                 let extension = extension.read().expect("Extension node must be readable");
                 self.process_node(
                     extension.node.clone(),
                     proof.clone(),
-                    [
-                        path.as_slice(),
-                        extension.prefix.get_data().to_vec().as_slice(),
-                    ]
-                    .concat(),
+                    [path.as_slice(), extension.prefix.get_data()].concat(),
                 )
                 .expect("Failed to process node");
             }
@@ -163,7 +173,7 @@ mod tests {
     use super::*;
 
     use alloy::primitives::{keccak256, Address, B256, U256};
-    use eth_trie::{EthTrie, RootWithTrieDiff, Trie};
+    use eth_trie::{decode_node, EthTrie, RootWithTrieDiff, Trie};
     use std::{str::FromStr, sync::Arc};
     use tracing_test::traced_test;
     use trin_utils::dir::create_temp_test_dir;

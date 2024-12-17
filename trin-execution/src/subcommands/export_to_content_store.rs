@@ -1,4 +1,4 @@
-use std::{fs, iter, path::Path, sync::Arc, time::Instant};
+use std::{fs, iter, mem, path::Path, sync::Arc, time::Instant};
 
 use alloy::{
     consensus::{constants::KECCAK_EMPTY, EMPTY_ROOT_HASH},
@@ -17,8 +17,9 @@ use ethportal_api::{
     StateContentValue,
 };
 use humanize_duration::{prelude::DurationExt, Truncate};
-use r2d2::ManageConnection;
-use r2d2_sqlite::{rusqlite::Connection, SqliteConnectionManager};
+use r2d2::{ManageConnection, Pool};
+use r2d2_sqlite::SqliteConnectionManager;
+use tokio::task::JoinHandle;
 use tracing::info;
 use trin_storage::versioned::{id_indexed_v1, ContentType};
 
@@ -72,26 +73,22 @@ pub async fn export(config: ExportToContentStoreConfig, data_dir: &Path) -> anyh
         }
 
         // Create and store AccountTrieNode
-        let encoded_trie_node: EncodedTrieNode = trie_proof
-            .proof
-            .last()
-            .expect("empty proof")
-            .to_vec()
-            .into();
-        let trie_node = encoded_trie_node.as_trie_node()?;
+        let encoded_trie_node: EncodedTrieNode = trie_proof.last_encoded_node;
 
-        content_store.insert(
-            StateContentKey::AccountTrieNode(AccountTrieNodeKey {
-                path: Nibbles::try_from_unpacked_nibbles(&trie_proof.path)?,
-                node_hash: encoded_trie_node.node_hash(),
-            }),
-            StateContentValue::TrieNode(TrieNode {
-                node: encoded_trie_node,
-            }),
-        )?;
+        content_store
+            .insert(
+                StateContentKey::AccountTrieNode(AccountTrieNodeKey {
+                    path: Nibbles::try_from_unpacked_nibbles(&trie_proof.path)?,
+                    node_hash: encoded_trie_node.node_hash(),
+                }),
+                StateContentValue::TrieNode(TrieNode {
+                    node: encoded_trie_node,
+                }),
+            )
+            .await?;
 
         // Continue Account Trie traversal if trie node is not leaf node
-        let Node::Leaf(leaf_node) = trie_node else {
+        let Node::Leaf(leaf_node) = trie_proof.last_node else {
             continue;
         };
 
@@ -115,15 +112,17 @@ pub async fn export(config: ExportToContentStoreConfig, data_dir: &Path) -> anyh
                 "Bytecode with hash {} not found in db.",
                 account_state.code_hash
             ))?;
-            content_store.insert(
-                StateContentKey::ContractBytecode(ContractBytecodeKey {
-                    address_hash,
-                    code_hash: account_state.code_hash,
-                }),
-                StateContentValue::ContractBytecode(ContractBytecode {
-                    code: ByteCode::new(bytecode).expect("To create bytecode from code"),
-                }),
-            )?;
+            content_store
+                .insert(
+                    StateContentKey::ContractBytecode(ContractBytecodeKey {
+                        address_hash,
+                        code_hash: account_state.code_hash,
+                    }),
+                    StateContentValue::ContractBytecode(ContractBytecode {
+                        code: ByteCode::new(bytecode).expect("To create bytecode from code"),
+                    }),
+                )
+                .await?;
         }
 
         // Iterate Storage trie if not empty
@@ -142,26 +141,23 @@ pub async fn export(config: ExportToContentStoreConfig, data_dir: &Path) -> anyh
                     );
                 }
 
-                let trie_node: EncodedTrieNode = storage_trie_proof
-                    .proof
-                    .last()
-                    .expect("empty proof")
-                    .to_vec()
-                    .into();
-
-                content_store.insert(
-                    StateContentKey::ContractStorageTrieNode(ContractStorageTrieNodeKey {
-                        address_hash,
-                        path: Nibbles::try_from_unpacked_nibbles(&storage_trie_proof.path)?,
-                        node_hash: trie_node.node_hash(),
-                    }),
-                    StateContentValue::TrieNode(TrieNode { node: trie_node }),
-                )?;
+                let trie_node: EncodedTrieNode = storage_trie_proof.last_encoded_node;
+                content_store
+                    .insert(
+                        StateContentKey::ContractStorageTrieNode(ContractStorageTrieNodeKey {
+                            address_hash,
+                            path: Nibbles::try_from_unpacked_nibbles(&storage_trie_proof.path)?,
+                            node_hash: trie_node.node_hash(),
+                        }),
+                        StateContentValue::TrieNode(TrieNode { node: trie_node }),
+                    )
+                    .await?;
             }
         }
     }
 
-    content_store.flush()?;
+    content_store.flush().await?;
+    content_store.wait_for_bg_task().await?;
 
     info!(
         "Finished in {}",
@@ -184,9 +180,9 @@ fn print_progress(prefix: &str, start_time: Instant, nibbles: &[u8]) {
 }
 
 struct ContentStore {
-    _sql_manager: SqliteConnectionManager,
-    conn: Connection,
+    connection_pool: Pool<SqliteConnectionManager>,
     cache: Vec<(B256, RawContentKey, RawContentValue)>,
+    bg_task: Option<JoinHandle<anyhow::Result<()>>>,
 }
 
 impl ContentStore {
@@ -202,62 +198,96 @@ impl ContentStore {
         assert!(!fs::exists(&path)?, "Store file {path:?} already exists");
 
         // Create sqlite manager and connection
-        let sql_manager = SqliteConnectionManager::file(path)
-            .with_init(|conn| conn.execute_batch("PRAGMA journal_mode=WAL;"));
+        let sql_manager = SqliteConnectionManager::file(path);
         let conn = sql_manager.connect()?;
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         conn.execute_batch(&id_indexed_v1::sql::create_table(&ContentType::State))?;
+        drop(conn);
+
+        let connection_pool = Pool::new(sql_manager)?;
 
         Ok(Self {
-            _sql_manager: sql_manager,
-            conn,
+            connection_pool,
             cache: Vec::with_capacity(Self::CACHE_SIZE),
+            bg_task: None,
         })
     }
 
-    fn insert(&mut self, key: StateContentKey, value: StateContentValue) -> anyhow::Result<()> {
+    async fn insert(
+        &mut self,
+        key: StateContentKey,
+        value: StateContentValue,
+    ) -> anyhow::Result<()> {
         let id = key.content_id();
         let key = key.to_bytes();
         let value = value.encode();
         self.cache.push((id.into(), key, value));
+
         if self.cache.len() >= Self::CACHE_SIZE {
-            self.flush()?;
+            self.flush().await?;
         }
+
         Ok(())
     }
 
-    fn flush(&mut self) -> anyhow::Result<()> {
+    async fn flush(&mut self) -> anyhow::Result<()> {
         if self.cache.is_empty() {
             return Ok(());
         }
 
-        info!("Writting to content store");
-        self.cache.sort();
-        let tx = self.conn.transaction()?;
-        for (id, key, value) in &self.cache {
-            let content_size = id.len() + key.len() + value.len();
-            let distance_u32 = u32::from_be_bytes(id[..4].try_into()?);
-            tx.execute(
-                &id_indexed_v1::sql::insert(&ContentType::State),
-                (
-                    id.as_slice(),
-                    key.to_vec(),
-                    value.to_vec(),
-                    distance_u32,
-                    content_size,
-                ),
-            )?;
+        self.wait_for_bg_task().await?;
+
+        let mut cache = Vec::with_capacity(Self::CACHE_SIZE);
+        mem::swap(&mut self.cache, &mut cache);
+
+        let mut conn = self.connection_pool.get()?;
+
+        self.bg_task = Some(tokio::spawn(async move {
+            info!("Starting bg task to write to content store");
+            cache.sort();
+            let tx = conn.transaction()?;
+            for (id, key, value) in &cache {
+                let content_size = id.len() + key.len() + value.len();
+                let distance_u32 = u32::from_be_bytes(id[..4].try_into()?);
+                tx.execute(
+                    &id_indexed_v1::sql::insert(&ContentType::State),
+                    (
+                        id.as_slice(),
+                        key.to_vec(),
+                        value.to_vec(),
+                        distance_u32,
+                        content_size,
+                    ),
+                )?;
+            }
+            tx.commit()?;
+
+            Ok(())
+        }));
+        Ok(())
+    }
+
+    async fn wait_for_bg_task(&mut self) -> anyhow::Result<()> {
+        if let Some(bg_task) = self.bg_task.take() {
+            if !bg_task.is_finished() {
+                info!("Waiting for bg task to finish...");
+                bg_task.await??;
+                info!("bg task finished")
+            }
         }
-        tx.commit()?;
-        self.cache.clear();
         Ok(())
     }
 }
 
 impl Drop for ContentStore {
     fn drop(&mut self) {
-        self.flush().expect("Flushing to be successful");
-        self.conn
-            .execute_batch("PRAGMA journal_mode=DELETE;")
-            .expect("to rollback journal mode");
+        assert!(
+            self.cache.is_empty(),
+            "Dropping content store with cache non-empty"
+        );
+        assert!(
+            self.bg_task.is_none(),
+            "Dropping content store with present join_handle"
+        );
     }
 }
