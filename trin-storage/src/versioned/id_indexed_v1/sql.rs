@@ -15,8 +15,6 @@ pub fn create_table(content_type: &ContentType) -> String {
             distance_short INTEGER NOT NULL,
             content_size INTEGER NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS {0}_distance_short_idx ON {0} (distance_short);
-        CREATE INDEX IF NOT EXISTS {0}_content_size_idx ON {0} (content_size);
         ",
         table_name(content_type)
     )
