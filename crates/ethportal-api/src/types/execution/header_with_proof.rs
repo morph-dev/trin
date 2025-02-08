@@ -3,7 +3,7 @@ use jsonrpsee::core::Serialize;
 use serde::Deserialize;
 use ssz::SszDecoderBuilder;
 use ssz_derive::{Decode, Encode};
-use ssz_types::{typenum, FixedVector};
+use ssz_types::{typenum, FixedVector, VariableList};
 
 use crate::{
     types::{
@@ -16,8 +16,10 @@ use crate::{
 /// The accumulator proof for the pre-merge blocks.
 pub type HistoricalHashesAccumulatorProof = FixedVector<B256, typenum::U15>;
 
-/// Proof that execution header root is part of BeaconBlock
-pub type BeaconBlockProof = FixedVector<B256, typenum::U11>;
+/// Proof that execution header root is part of BeaconBlock, post-Merge and pre-Capella
+pub type BeaconBlockProofPreCapella = FixedVector<B256, typenum::U11>;
+/// Proof that execution header root is part of BeaconBlock, post-Capella
+pub type BeaconBlockProof = VariableList<B256, typenum::U12>;
 /// Proof that BeaconBlockHeader root is part of HistoricalRoots
 pub type HistoricalRootsProof = FixedVector<B256, typenum::U14>;
 /// Proof that BeaconBlockHeader root is part of HistoricalSummaries
@@ -123,7 +125,7 @@ pub struct SszNone {}
 // Total size (8 + 1 + 3 + 1 + 14) * 32 bytes + 4 bytes = 868 bytes
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
 pub struct HistoricalRootsBlockProof {
-    pub beacon_block_proof: BeaconBlockProof,
+    pub beacon_block_proof: BeaconBlockProofPreCapella,
     pub beacon_block_root: B256,
     pub historical_roots_proof: HistoricalRootsProof,
     pub slot: u64,
