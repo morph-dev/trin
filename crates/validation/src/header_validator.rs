@@ -53,7 +53,7 @@ impl HeaderValidator {
 
                 match verify_merkle_proof(
                     hwp.header.hash(),
-                    &proof.proof,
+                    proof,
                     15,
                     gen_index as usize,
                     epoch_hash,
@@ -222,7 +222,9 @@ mod test {
     use ethportal_api::{
         types::execution::{
             accumulator::EpochAccumulator,
-            header_with_proof::{BlockHeaderProof, HeaderWithProof},
+            header_with_proof::{
+                BlockHeaderProof, HeaderWithProof, HistoricalHashesAccumulatorProof,
+            },
         },
         utils::bytes::{hex_decode, hex_encode},
         HistoryContentKey, OverlayContentKey,
@@ -274,10 +276,10 @@ mod test {
             BlockHeaderProof::HistoricalHashesAccumulatorProof(val) => val,
             _ => panic!("test reached invalid state"),
         };
-        assert_eq!(trin_proof, fluffy_proof.proof);
+        assert_eq!(trin_proof, fluffy_proof);
         let hwp = HeaderWithProof {
             header,
-            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(trin_proof.into()),
+            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(trin_proof),
         };
         header_validator.validate_header_with_proof(&hwp).unwrap();
     }
@@ -299,7 +301,7 @@ mod test {
         assert_eq!(proof.len(), 15);
         let header_with_proof = HeaderWithProof {
             header,
-            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(proof.into()),
+            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(proof),
         };
         HeaderValidator::new()
             .validate_header_with_proof(&header_with_proof)
@@ -317,7 +319,7 @@ mod test {
         proof.swap(0, 1);
         let hwp = HeaderWithProof {
             header,
-            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(proof.into()),
+            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(proof),
         };
         assert!(header_validator
             .validate_header_with_proof(&hwp)
@@ -334,7 +336,9 @@ mod test {
         let future_header = generate_random_header(&future_height);
         let future_hwp = HeaderWithProof {
             header: future_header,
-            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof([B256::ZERO; 15].into()),
+            proof: BlockHeaderProof::HistoricalHashesAccumulatorProof(
+                HistoricalHashesAccumulatorProof::default(),
+            ),
         };
         header_validator
             .validate_header_with_proof(&future_hwp)
