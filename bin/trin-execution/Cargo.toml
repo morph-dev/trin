@@ -27,6 +27,8 @@ jsonrpsee = { workspace = true, features = ["async-client", "client", "macros", 
 lazy_static.workspace = true
 parking_lot.workspace = true
 prometheus_exporter.workspace = true
+r2d2 = "0.8.9"
+r2d2_sqlite = "0.24.0"
 rand.workspace = true
 rayon = "1.10.0"
 reqwest =  { workspace = true, features = ["stream"] }
@@ -34,6 +36,7 @@ revm.workspace = true
 revm-inspectors = "0.15.0"
 revm-primitives.workspace = true
 rocksdb = "0.22.0"
+rusqlite = { version = "0.31.0", features = ["bundled"] }
 serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
 thiserror.workspace = true
