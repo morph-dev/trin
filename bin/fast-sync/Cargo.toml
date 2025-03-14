@@ -1,0 +1,29 @@
+[package]
+name = "fast-sync"
+description = "Lightweight portal client for synching pre-merge data"
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+alloy.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+discv5.workspace = true
+ethereum_ssz.workspace = true
+ethportal-api.workspace = true
+lru = "0.7.8"
+parking_lot.workspace = true
+portalnet.workspace = true
+ssz_types.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+trin-utils.workspace = true
+utp-rs.workspace = true
