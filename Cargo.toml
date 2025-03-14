@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "bin/fast-sync",
     "bin/portal-bridge",
     "bin/trin", 
     "bin/trin-execution",
@@ -101,6 +102,7 @@ utp-rs = { git = "https://github.com/ethereum/utp", tag = "v0.1.0-alpha.16" }
 # Trin workspace crates
 e2store = { path = "crates/e2store" }
 ethportal-api = { path = "crates/ethportal-api" }
+fast-fetch = { path = "bin/fast_fetch" }
 light-client = { path = "crates/light-client" }
 portal-bridge = { path = "bin/portal-bridge" }
 portalnet = { path = "crates/portalnet" }
