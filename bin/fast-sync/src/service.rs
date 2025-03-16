@@ -1,32 +1,38 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use anyhow::{anyhow, bail};
-use discv5::{Enr, TalkRequest};
-use ethportal_api::types::{
-    distance::Distance,
-    network::Subnetwork,
-    ping_extensions::{
-        decode::DecodedExtension,
-        extension_types::Extensions,
-        extensions::{
-            type_0::ClientInfoRadiusCapabilities,
-            type_1::BasicRadius,
-            type_2::HistoryRadius,
-            type_65535::{ErrorCodes, PingError},
+use discv5::{enr::NodeId, Enr, TalkRequest};
+use ethportal_api::{
+    types::{
+        distance::{Distance, Metric},
+        network::Subnetwork,
+        ping_extensions::{
+            decode::DecodedExtension,
+            extension_types::Extensions,
+            extensions::{
+                type_0::ClientInfoRadiusCapabilities,
+                type_1::BasicRadius,
+                type_2::HistoryRadius,
+                type_65535::{ErrorCodes, PingError},
+            },
+        },
+        portal_wire::{
+            Accept, Content, CustomPayload, FindContent, FindNodes, Message, Nodes, Offer, Ping,
+            Pong,
         },
     },
-    portal_wire::{
-        Accept, Content, CustomPayload, FindContent, FindNodes, Message, Nodes, Offer, Ping, Pong,
-    },
+    ContentValue, OverlayContentKey,
 };
-use portalnet::discovery::UtpPeer;
+use portalnet::{discovery::UtpPeer, utp::controller::UTP_CONN_CFG};
 use ssz::{Decode, Encode};
 use ssz_types::BitList;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, warn};
-use utp_rs::socket::UtpSocket;
+use utp_rs::{peer::Peer, socket::UtpSocket};
 
-use crate::discovery::Discovery;
+use crate::{discovery::Discovery, types::FindContentResult};
+
+const FIND_NODES_MAX_DISTANCE_DIFFERENCE: u16 = 3;
 
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
@@ -37,37 +43,30 @@ pub struct ServiceConfig {
 pub struct Service<TContentKey, TMetric> {
     subnetwork: Subnetwork,
     discovery: Arc<Discovery>,
-    _utp_socket: Arc<UtpSocket<UtpPeer>>,
+    utp_socket: Arc<UtpSocket<UtpPeer>>,
+    outgoing_semaphore: Arc<Semaphore>,
     _phantom_content_key: PhantomData<TContentKey>,
     _phantom_metric: PhantomData<TMetric>,
 }
 
 impl<TContentKey, TMetric> Service<TContentKey, TMetric>
 where
-    TContentKey: 'static + Send + Sync,
-    TMetric: 'static + Send + Sync,
+    TContentKey: 'static + Send + Sync + OverlayContentKey,
+    TMetric: 'static + Send + Sync + Metric,
 {
-    pub fn new(
-        subnetwork: Subnetwork,
-        discovery: Arc<Discovery>,
-        utp_socket: Arc<UtpSocket<UtpPeer>>,
-    ) -> Self {
-        Self {
-            subnetwork,
-            discovery,
-            _utp_socket: utp_socket,
-            _phantom_content_key: PhantomData,
-            _phantom_metric: PhantomData,
-        }
-    }
-
     pub fn spawn(
         subnetwork: Subnetwork,
         discovery: Arc<Discovery>,
         utp_socket: Arc<UtpSocket<UtpPeer>>,
         config: ServiceConfig,
     ) -> anyhow::Result<Arc<Self>> {
-        let service = Arc::new(Self::new(subnetwork, discovery, utp_socket));
+        let semaphore = Semaphore::new(config.outgoing_talk_request_capacity);
+        let service = Arc::new(Self::new(
+            subnetwork,
+            discovery,
+            utp_socket,
+            Arc::new(semaphore),
+        ));
         Self::start(&service, &config);
         Ok(service)
     }
@@ -94,8 +93,30 @@ where
         });
         info!(%subnetwork, "Subnetwork Service started");
     }
+}
 
-    pub fn process_incoming_talk_request(
+impl<TContentKey, TMetric> Service<TContentKey, TMetric>
+where
+    TContentKey: OverlayContentKey,
+    TMetric: Metric,
+{
+    pub fn new(
+        subnetwork: Subnetwork,
+        discovery: Arc<Discovery>,
+        utp_socket: Arc<UtpSocket<UtpPeer>>,
+        outgoing_semaphore: Arc<Semaphore>,
+    ) -> Self {
+        Self {
+            subnetwork,
+            discovery,
+            utp_socket,
+            outgoing_semaphore,
+            _phantom_content_key: PhantomData,
+            _phantom_metric: PhantomData,
+        }
+    }
+
+    fn process_incoming_talk_request(
         &self,
         enr: Enr,
         talk_request: TalkRequest,
@@ -130,7 +151,7 @@ where
         Ok(())
     }
 
-    pub fn process_incoming_ping(&self, _enr: Enr, ping: Ping) -> anyhow::Result<Pong> {
+    fn process_incoming_ping(&self, _enr: Enr, ping: Ping) -> anyhow::Result<Pong> {
         let local_enr = self.discovery.local_enr();
 
         let response_payload: CustomPayload =
@@ -158,18 +179,18 @@ where
         })
     }
 
-    pub fn process_incoming_find_nodes(
+    fn process_incoming_find_nodes(
         &self,
         _enr: Enr,
         _find_nodes: FindNodes,
     ) -> anyhow::Result<Nodes> {
         Ok(Nodes {
-            total: 0,
+            total: 1,
             enrs: vec![],
         })
     }
 
-    pub fn process_incoming_find_content(
+    fn process_incoming_find_content(
         &self,
         _enr: Enr,
         _find_content: FindContent,
@@ -177,12 +198,137 @@ where
         Ok(Content::Enrs(vec![]))
     }
 
-    pub fn process_incoming_offer(&self, _enr: Enr, offer: Offer) -> anyhow::Result<Accept> {
+    fn process_incoming_offer(&self, _enr: Enr, offer: Offer) -> anyhow::Result<Accept> {
         let accepted_keys = BitList::with_capacity(offer.content_keys.len())
             .expect("should be able to create Bitlist");
         Ok(Accept {
             connection_id: 0,
             content_keys: accepted_keys,
         })
+    }
+
+    async fn send_talk_req(&self, enr: Enr, message: Message) -> anyhow::Result<Message> {
+        let response = self
+            .discovery
+            .send_talk_req(enr, self.subnetwork, message.as_ssz_bytes())
+            .await
+            .map_err(|err| anyhow!("Error sending TALKREQ: {err}"))?;
+        Message::from_ssz_bytes(&response)
+            .map_err(|err| anyhow!("Error decoding TALKRESP: {err:?}"))
+    }
+
+    pub async fn send_ping(&self, enr: Enr) -> anyhow::Result<Pong> {
+        let _permit = self.outgoing_semaphore.acquire().await?;
+        let ping = Ping {
+            enr_seq: self.discovery.local_enr().seq(),
+            payload_type: Extensions::Capabilities.into(),
+            payload: ClientInfoRadiusCapabilities::new(
+                Distance::ZERO,
+                vec![
+                    Extensions::Capabilities.into(),
+                    Extensions::HistoryRadius.into(),
+                    Extensions::Error.into(),
+                ],
+            )
+            .into(),
+        };
+        match self.send_talk_req(enr, Message::Ping(ping)).await? {
+            Message::Pong(pong) => Ok(pong),
+            message => Err(anyhow!(
+                "Wrong response type! Expected PONG received: {message:?}"
+            )),
+        }
+    }
+
+    pub async fn send_find_nodes(&self, enr: Enr, target: &NodeId) -> anyhow::Result<Vec<Enr>> {
+        let _permit = self.outgoing_semaphore.acquire().await?;
+        let start_distance = TMetric::distance(&enr.node_id().raw(), &target.raw())
+            .log2()
+            .unwrap_or(0) as u16;
+        let mut distances = vec![start_distance];
+        for difference in 1..=start_distance.min(FIND_NODES_MAX_DISTANCE_DIFFERENCE) {
+            distances.push(start_distance - difference);
+        }
+        for distance in
+            (start_distance + 1)..=(start_distance + FIND_NODES_MAX_DISTANCE_DIFFERENCE).min(256)
+        {
+            distances.push(distance);
+        }
+
+        match self
+            .send_talk_req(enr, Message::FindNodes(FindNodes { distances }))
+            .await?
+        {
+            Message::Nodes(nodes) => Ok(nodes.enrs.into_iter().map(|enr| enr.0).collect()),
+            message => Err(anyhow!(
+                "Wrong response type! Expected NODES received: {message:?}"
+            )),
+        }
+    }
+
+    pub async fn send_get_enr(&self, enr: Enr) -> anyhow::Result<Enr> {
+        let _permit = self.outgoing_semaphore.acquire().await?;
+        let mut enrs = match self
+            .send_talk_req(enr, Message::FindNodes(FindNodes { distances: vec![0] }))
+            .await?
+        {
+            Message::Nodes(nodes) => nodes.enrs,
+            message => bail!("Wrong response type! Expected NODES received: {message:?}"),
+        };
+
+        if enrs.len() == 1 {
+            Ok(enrs.remove(0).0)
+        } else {
+            bail!("Expected 1 enr, received: {}", enrs.len())
+        }
+    }
+
+    pub async fn send_find_content<TContentValue: ContentValue<TContentKey = TContentKey>>(
+        &self,
+        enr: Enr,
+        content_key: &TContentKey,
+    ) -> anyhow::Result<FindContentResult<TContentValue>> {
+        let _permit = self.outgoing_semaphore.acquire().await?;
+        let find_content = FindContent {
+            content_key: content_key.to_bytes(),
+        };
+        let response = match self
+            .send_talk_req(enr.clone(), Message::FindContent(find_content))
+            .await?
+        {
+            Message::Content(content) => content,
+            message => bail!("Wrong response type! Expected CONTENT received: {message:?}"),
+        };
+
+        match response {
+            Content::ConnectionId(conn_id) => {
+                let conn_id = u16::from_be(conn_id);
+                let cid = utp_rs::cid::ConnectionId {
+                    recv: conn_id,
+                    send: conn_id.wrapping_add(1),
+                    peer_id: enr.node_id(),
+                };
+
+                let mut utp_stream = self
+                    .utp_socket
+                    .connect_with_cid(cid, Peer::new(UtpPeer(enr)), *UTP_CONN_CFG)
+                    .await?;
+
+                let mut buf = Vec::with_capacity(/* 1MB */ 1 << 20);
+                utp_stream.read_to_eof(&mut buf).await?;
+
+                Ok(FindContentResult::Content(TContentValue::decode(
+                    content_key,
+                    &buf,
+                )?))
+            }
+            Content::Content(bytes) => Ok(FindContentResult::Content(TContentValue::decode(
+                content_key,
+                &bytes,
+            )?)),
+            Content::Enrs(ssz_enrs) => Ok(FindContentResult::Peers(
+                ssz_enrs.into_iter().map(|enr| enr.0).collect(),
+            )),
+        }
     }
 }
