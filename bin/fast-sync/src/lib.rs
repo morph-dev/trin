@@ -1,8 +1,10 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, str::FromStr, sync::Arc};
 
 use alloy::primitives::B256;
+use census::Census;
 use clap::{arg, Parser};
 use discovery::Discovery;
+use discv5::Enr;
 use ethportal_api::{
     types::{distance::XorMetric, network::Subnetwork},
     HistoryContentKey,
@@ -13,8 +15,10 @@ use tokio::sync::mpsc;
 use utp_rs::socket::UtpSocket;
 use utp_socket::Discovery5UtpSocket;
 
+pub mod census;
 pub mod discovery;
 pub mod service;
+pub mod types;
 pub mod utp_socket;
 
 #[derive(Parser, Debug, Default, PartialEq, Eq, Clone)]
@@ -51,6 +55,12 @@ pub struct FastSync {
     _history: Arc<Service<HistoryContentKey, XorMetric>>,
 }
 
+const BOOTNODES_PUBLIC: &[&str] = &[
+    "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+    "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
+    "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+];
+
 impl FastSync {
     pub async fn start(args: Args) -> anyhow::Result<Self> {
         // Setup discv5
@@ -73,6 +83,15 @@ impl FastSync {
                 outgoing_talk_request_capacity: args.mpsc_channel_capacity,
             },
         )?;
+
+        let bootnodes = BOOTNODES_PUBLIC
+            .iter()
+            .map(|bootnode| Enr::from_str(bootnode).unwrap())
+            .collect::<Vec<_>>();
+
+        let census = Arc::new(Census::new(history.clone(), 100));
+        census.init(&bootnodes).await?;
+        census.start();
 
         Ok(Self {
             _discovery: discovery,
