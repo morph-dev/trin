@@ -207,17 +207,17 @@ where
         })
     }
 
-    async fn send_talk_req(&self, enr: Enr, message: Message) -> anyhow::Result<Message> {
+    async fn send_talk_req(&self, enr: &Enr, message: Message) -> anyhow::Result<Message> {
         let response = self
             .discovery
-            .send_talk_req(enr, self.subnetwork, message.as_ssz_bytes())
+            .send_talk_req(enr.clone(), self.subnetwork, message.as_ssz_bytes())
             .await
             .map_err(|err| anyhow!("Error sending TALKREQ: {err}"))?;
         Message::from_ssz_bytes(&response)
             .map_err(|err| anyhow!("Error decoding TALKRESP: {err:?}"))
     }
 
-    pub async fn send_ping(&self, enr: Enr) -> anyhow::Result<Pong> {
+    pub async fn send_ping(&self, enr: &Enr) -> anyhow::Result<Pong> {
         let _permit = self.outgoing_semaphore.acquire().await?;
         let ping = Ping {
             enr_seq: self.discovery.local_enr().seq(),
@@ -240,7 +240,7 @@ where
         }
     }
 
-    pub async fn send_find_nodes(&self, enr: Enr, target: &NodeId) -> anyhow::Result<Vec<Enr>> {
+    pub async fn send_find_nodes(&self, enr: &Enr, target: &NodeId) -> anyhow::Result<Vec<Enr>> {
         let _permit = self.outgoing_semaphore.acquire().await?;
         let start_distance = TMetric::distance(&enr.node_id().raw(), &target.raw())
             .log2()
@@ -266,7 +266,7 @@ where
         }
     }
 
-    pub async fn send_get_enr(&self, enr: Enr) -> anyhow::Result<Enr> {
+    pub async fn send_get_enr(&self, enr: &Enr) -> anyhow::Result<Enr> {
         let _permit = self.outgoing_semaphore.acquire().await?;
         let mut enrs = match self
             .send_talk_req(enr, Message::FindNodes(FindNodes { distances: vec![0] }))
@@ -285,7 +285,7 @@ where
 
     pub async fn send_find_content<TContentValue: ContentValue<TContentKey = TContentKey>>(
         &self,
-        enr: Enr,
+        enr: &Enr,
         content_key: &TContentKey,
     ) -> anyhow::Result<FindContentResult<TContentValue>> {
         let _permit = self.outgoing_semaphore.acquire().await?;
@@ -293,7 +293,7 @@ where
             content_key: content_key.to_bytes(),
         };
         let response = match self
-            .send_talk_req(enr.clone(), Message::FindContent(find_content))
+            .send_talk_req(enr, Message::FindContent(find_content))
             .await?
         {
             Message::Content(content) => content,
@@ -311,7 +311,7 @@ where
 
                 let mut utp_stream = self
                     .utp_socket
-                    .connect_with_cid(cid, Peer::new(UtpPeer(enr)), *UTP_CONN_CFG)
+                    .connect_with_cid(cid, Peer::new(UtpPeer(enr.clone())), *UTP_CONN_CFG)
                     .await?;
 
                 let mut buf = Vec::with_capacity(/* 1MB */ 1 << 20);
