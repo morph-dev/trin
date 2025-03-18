@@ -6992,6 +6992,7 @@ dependencies = [
  "clap",
  "e2store",
  "eth_trie",
+ "ethereum_ssz",
  "ethportal-api",
  "futures-util",
  "hashbrown 0.14.5",

@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use ethportal_api::{BlockBody, BlockBodyLegacy};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use revm_primitives::B256;
+use ssz::Encode;
 use tracing::info;
 use trin_execution::era::manager::EraManager;
 use trin_utils::log::init_tracing_logger;
@@ -14,7 +16,7 @@ struct Args {
     #[arg(help = "The last block to fetch")]
     last_block: u64,
 
-    #[arg(help = "The Path to the sqlite db", long)]
+    #[arg(help = "The Path to the sqlite db")]
     db_path: PathBuf,
 }
 
@@ -25,14 +27,20 @@ mod sql {
     ";
 
     pub const CREATE_TABLE: &str = "
-        CREATE TABLE IF NOT EXISTS headers (number INTEGER PRIMARY KEY, hash BLOB NOT NULL);
+        CREATE TABLE IF NOT EXISTS headers (
+            number INTEGER PRIMARY KEY,
+            hash BLOB NOT NULL,
+            header BLOB NOT NULL,
+            body BLOB NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS headers_hash_idx ON headers (hash);
     ";
 
     pub const QUERY_LAST_BLOCK: &str =
         "SELECT number, hash FROM headers ORDER BY number DESC LIMIT 1;";
 
-    pub const INSERT_BLOCK: &str = "INSERT INTO headers (number, hash) VALUES (?1, ?2);";
+    pub const INSERT_BLOCK: &str =
+        "INSERT INTO headers (number, hash, header, body) VALUES (?1, ?2, ?3, ?4);";
 }
 
 #[tokio::main]
@@ -71,13 +79,20 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let mut total_headers_size = 0;
+    let mut total_bodies_size = 0;
+
     let mut insert_query = conn.prepare(sql::INSERT_BLOCK)?;
 
     let mut era_manager = EraManager::new(next_block_number).await?;
     while era_manager.next_block_number() <= args.last_block {
-        let header = &era_manager.get_next_block().await?.header;
+        let block = era_manager.get_next_block().await?;
+        let header = block.header.clone();
         if header.number % 100_000 == 0 {
-            info!("Writing block: {}", header.number);
+            info!(
+                total_headers_size,
+                total_bodies_size, "Writing block: {}", header.number,
+            );
         }
 
         let hash = header.hash();
@@ -90,16 +105,30 @@ async fn main() -> anyhow::Result<()> {
         }
         last_block_hash = Some(hash);
 
+        let block_body = BlockBody::Legacy(BlockBodyLegacy {
+            txs: block
+                .transactions
+                .iter()
+                .map(|tx| tx.transaction.clone())
+                .collect(),
+            uncles: block.uncles.to_owned().unwrap_or_default(),
+        });
+
+        let header_bytes = alloy_rlp::encode(&header);
+        total_headers_size += header_bytes.len();
+        let block_body_bytes = block_body.as_ssz_bytes();
+        total_bodies_size += block_body_bytes.len();
         let inserted = insert_query.execute((
             header.number,
             header.hash().to_vec(),
-            // alloy_rlp::encode(header),
+            header_bytes,
+            block_body_bytes,
         ))?;
 
         anyhow::ensure!(inserted == 1, "Expected to insert one header");
     }
 
-    info!("Finished!");
+    info!(total_headers_size, total_bodies_size, "Finished!");
 
     Ok(())
 }
