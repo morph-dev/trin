@@ -90,6 +90,13 @@ impl Peers {
         }
     }
 
+    pub fn get_peer(&self, peer: &NodeId) -> Option<(Enr, Distance)> {
+        self.read()
+            .peers
+            .get(peer)
+            .map(|peer| (peer.enr(), peer.radius()))
+    }
+
     pub fn closest_peers(&self, target: &NodeId, count: usize) -> Vec<Enr> {
         let target = target.raw();
         self.read()

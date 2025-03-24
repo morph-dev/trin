@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
 
 use alloy::primitives::{Bytes, B256};
@@ -29,6 +30,7 @@ pub struct DiscoveryConfig {
     port: u16,
     external_address: Option<SocketAddr>,
     enr_cache_capacity: usize,
+    timeout: Duration,
 }
 
 impl From<&Args> for DiscoveryConfig {
@@ -38,6 +40,7 @@ impl From<&Args> for DiscoveryConfig {
             port: args.discovery_port,
             external_address: args.external_address,
             enr_cache_capacity: args.enr_cache_capacity,
+            timeout: Duration::from_millis(args.discv5_timeout_ms),
         }
     }
 }
@@ -94,6 +97,7 @@ impl Discovery {
                 ip: Ipv4Addr::UNSPECIFIED,
                 port: config.port,
             })
+            .request_timeout(config.timeout)
             .build(),
         )
         .map_err(|err| anyhow!(err))?;

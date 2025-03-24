@@ -7,8 +7,8 @@ use ethportal_api::{
         distance::{Distance, Metric},
         network::Subnetwork,
         ping_extensions::{
-            decode::DecodedExtension,
-            extension_types::Extensions,
+            decode::PingExtension,
+            extension_types::PingExtensionType,
             extensions::{
                 type_0::ClientInfoRadiusCapabilities,
                 type_1::BasicRadius,
@@ -21,7 +21,7 @@ use ethportal_api::{
             Pong,
         },
     },
-    ContentValue, OverlayContentKey,
+    OverlayContentKey,
 };
 use portalnet::{discovery::UtpPeer, utp::controller::UTP_CONN_CFG};
 use ssz::{Decode, Encode};
@@ -60,12 +60,12 @@ where
         utp_socket: Arc<UtpSocket<UtpPeer>>,
         config: ServiceConfig,
     ) -> anyhow::Result<Arc<Self>> {
-        let semaphore = Semaphore::new(config.outgoing_talk_request_capacity);
+        let outgoing_semaphore = Semaphore::new(config.outgoing_talk_request_capacity);
         let service = Arc::new(Self::new(
             subnetwork,
             discovery,
             utp_socket,
-            Arc::new(semaphore),
+            Arc::new(outgoing_semaphore),
         ));
         Self::start(&service, &config);
         Ok(service)
@@ -93,13 +93,7 @@ where
         });
         info!(%subnetwork, "Subnetwork Service started");
     }
-}
 
-impl<TContentKey, TMetric> Service<TContentKey, TMetric>
-where
-    TContentKey: OverlayContentKey,
-    TMetric: Metric,
-{
     pub fn new(
         subnetwork: Subnetwork,
         discovery: Arc<Discovery>,
@@ -155,20 +149,18 @@ where
         let local_enr = self.discovery.local_enr();
 
         let response_payload: CustomPayload =
-            match DecodedExtension::decode_extension(ping.payload_type, ping.payload) {
-                Ok(DecodedExtension::Capabilities(_)) => ClientInfoRadiusCapabilities::new(
+            match PingExtension::decode_ssz(ping.payload_type, ping.payload) {
+                Ok(PingExtension::Capabilities(_)) => ClientInfoRadiusCapabilities::new(
                     Distance::ZERO,
                     vec![
-                        Extensions::Capabilities.into(),
-                        Extensions::HistoryRadius.into(),
-                        Extensions::Error.into(),
+                        PingExtensionType::Capabilities,
+                        PingExtensionType::HistoryRadius,
+                        PingExtensionType::Error,
                     ],
                 )
                 .into(),
-                Ok(DecodedExtension::BasicRadius(_)) => BasicRadius::new(Distance::ZERO).into(),
-                Ok(DecodedExtension::HistoryRadius(_)) => {
-                    HistoryRadius::new(Distance::ZERO, 0).into()
-                }
+                Ok(PingExtension::BasicRadius(_)) => BasicRadius::new(Distance::ZERO).into(),
+                Ok(PingExtension::HistoryRadius(_)) => HistoryRadius::new(Distance::ZERO, 0).into(),
                 Ok(_) => PingError::new(ErrorCodes::ExtensionNotSupported).into(),
                 Err(_err) => PingError::new(ErrorCodes::FailedToDecodePayload).into(),
             };
@@ -212,7 +204,12 @@ where
             .discovery
             .send_talk_req(enr.clone(), self.subnetwork, message.as_ssz_bytes())
             .await
-            .map_err(|err| anyhow!("Error sending TALKREQ: {err}"))?;
+            .map_err(|err| {
+                anyhow!(
+                    "Error sending TALKREQ ({}): {err}",
+                    message.as_ssz_bytes()[0],
+                )
+            })?;
         Message::from_ssz_bytes(&response)
             .map_err(|err| anyhow!("Error decoding TALKRESP: {err:?}"))
     }
@@ -221,13 +218,13 @@ where
         let _permit = self.outgoing_semaphore.acquire().await?;
         let ping = Ping {
             enr_seq: self.discovery.local_enr().seq(),
-            payload_type: Extensions::Capabilities.into(),
+            payload_type: PingExtensionType::Capabilities,
             payload: ClientInfoRadiusCapabilities::new(
                 Distance::ZERO,
                 vec![
-                    Extensions::Capabilities.into(),
-                    Extensions::HistoryRadius.into(),
-                    Extensions::Error.into(),
+                    PingExtensionType::Capabilities,
+                    PingExtensionType::HistoryRadius,
+                    PingExtensionType::Error,
                 ],
             )
             .into(),
@@ -283,11 +280,11 @@ where
         }
     }
 
-    pub async fn send_find_content<TContentValue: ContentValue<TContentKey = TContentKey>>(
+    pub async fn send_find_content(
         &self,
         enr: &Enr,
         content_key: &TContentKey,
-    ) -> anyhow::Result<FindContentResult<TContentValue>> {
+    ) -> anyhow::Result<FindContentResult> {
         let _permit = self.outgoing_semaphore.acquire().await?;
         let find_content = FindContent {
             content_key: content_key.to_bytes(),
@@ -317,15 +314,9 @@ where
                 let mut buf = Vec::with_capacity(/* 1MB */ 1 << 20);
                 utp_stream.read_to_eof(&mut buf).await?;
 
-                Ok(FindContentResult::Content(TContentValue::decode(
-                    content_key,
-                    &buf,
-                )?))
+                Ok(FindContentResult::Content(buf.into()))
             }
-            Content::Content(bytes) => Ok(FindContentResult::Content(TContentValue::decode(
-                content_key,
-                &bytes,
-            )?)),
+            Content::Content(bytes) => Ok(FindContentResult::Content(bytes)),
             Content::Enrs(ssz_enrs) => Ok(FindContentResult::Peers(
                 ssz_enrs.into_iter().map(|enr| enr.0).collect(),
             )),
