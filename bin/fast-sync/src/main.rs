@@ -7,12 +7,7 @@ async fn main() -> anyhow::Result<()> {
     init_tracing_logger();
 
     let args = Args::parse();
-    let fast_sync = FastSync::start(args).await?;
+    FastSync::run(args).await?;
 
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to pause until ctrl-c");
-
-    drop(fast_sync);
     Ok(())
 }
