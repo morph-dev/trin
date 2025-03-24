@@ -6,7 +6,7 @@ use ethportal_api::{
     generate_random_node_ids,
     types::{
         distance::{Distance, XorMetric},
-        ping_extensions::decode::DecodedExtension,
+        ping_extensions::decode::PingExtension,
     },
     HistoryContentKey,
 };
@@ -53,7 +53,7 @@ pub struct Census {
 impl Census {
     const DISCOVERY_DEGREE: u32 = 4;
     const DISCOVERY_PEERS: usize = 5;
-    const DISCOVERY_INTERVAL: Duration = Duration::from_secs(60);
+    const DISCOVERY_INTERVAL: Duration = Duration::from_secs(/* 10min= */ 600);
     const STOP_FRACTION_THRESHOLD: f64 = 0.01;
 
     pub fn new(network: Arc<Service<HistoryContentKey, XorMetric>>, concurrency: usize) -> Self {
@@ -99,8 +99,10 @@ impl Census {
         Ok(())
     }
 
-    pub fn start(self: Arc<Self>) {
+    pub fn start(self: &Arc<Self>) {
+        let census = self.clone();
         let mut peers = self.peers.clone();
+
         tokio::spawn(async move {
             let mut discovery_interval = tokio::time::interval(Self::DISCOVERY_INTERVAL);
 
@@ -108,13 +110,13 @@ impl Census {
                 select! {
                     _ = discovery_interval.tick() => {
                         info!("background_task: running peer discovery");
-                        self.peer_discovery().await;
+                        census.peer_discovery().await;
                     }
                     peer = peers.next() => {
                         match peer {
                             Some(peer) => {
                                 info!("background_task: checking liveness: {}", peer.node_id());
-                                self.liveness_check(&peer).await;
+                                census.liveness_check(&peer).await;
                             }
                             None => {
                                 error!(
@@ -246,9 +248,9 @@ impl Census {
         };
         let enr = fresh_enr.as_ref().unwrap_or(enr);
 
-        let radius = match DecodedExtension::decode_extension(pong.payload_type, pong.payload) {
-            Ok(DecodedExtension::Capabilities(capabilities)) => capabilities.data_radius,
-            Ok(DecodedExtension::HistoryRadius(history_radius)) => history_radius.data_radius,
+        let radius = match PingExtension::decode_ssz(pong.payload_type, pong.payload) {
+            Ok(PingExtension::Capabilities(capabilities)) => capabilities.data_radius,
+            Ok(PingExtension::HistoryRadius(history_radius)) => history_radius.data_radius,
             _ => {
                 self.peers.record_failed_liveness_check(enr);
                 return LivenessResult::Fail;
@@ -257,6 +259,18 @@ impl Census {
 
         self.peers.record_successful_liveness_check(enr, radius);
         LivenessResult::Pass
+    }
+
+    pub fn peers_discovered(self: &Arc<Self>, peers: Vec<Enr>) {
+        let census = self.clone();
+        tokio::spawn(async move {
+            let unknown_peers = peers
+                .into_iter()
+                .filter(|peer| census.peers.get_peer(&peer.node_id()).is_some());
+            for peer in unknown_peers {
+                census.liveness_check(&peer).await;
+            }
+        });
     }
 
     pub fn closest_peers(&self, target: &NodeId, count: usize) -> Result<Vec<Enr>, CensusError> {
