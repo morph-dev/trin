@@ -7190,6 +7190,7 @@ dependencies = [
  "prometheus_exporter",
  "rpc",
  "rstest",
+ "serial_test",
  "test-log",
  "tokio",
  "tracing",

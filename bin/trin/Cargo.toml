@@ -35,3 +35,4 @@ url.workspace = true
 [dev-dependencies]
 test-log.workspace = true
 rstest.workspace = true
+serial_test.workspace = true

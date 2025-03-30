@@ -204,3 +204,50 @@ pub async fn run_trin(
 
     Ok(rpc_handle)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::str::FromStr;
+
+    use discv5::Enr;
+    use ethportal_api::HistoryNetworkApiClient;
+
+    #[rstest::rstest]
+    #[case::ultralight("enr:-I24QNw9C_xJvljho0dO27ug7-wZg7KCN1Mmqefdvqwxxqw3X-SLzBO3-KvzCbGFFJJMDn1be6Hd-Bf_TR3afjrwZ7UEY4d1IDAuMC4xgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o")]
+    #[case::ultralight("enr:-I24QHZRM9Sd3UgUOdB443q3nX6NOUsg0VMyarcfD69z8M3SB1vW2hkqiPFczPpyY6wSUCcUeXTig75sC5fT4YnsL7MEY4d1IDAuMC4xgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQMGuOLosx85PYtBn7rULoHY9EAtLmGTn7XWoIvFqvq4qIN1ZHCCE5A")]
+    #[case::shisui("enr:-JK4QNGJ9PrXXL7cUtHkYYMldhxhE1Gl7Oj0BivtyAG4VO5fb1SSfTrhnKEu_7djWO9pT8dvlY_WoASTOotmK4Zc79GGAZWjmBRnY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhAuPiFr-WggAR3YFIMqjXW4gXmpVE6WnImR9W5NpiFLNzg3VkcIJxWA")]
+    #[case::shisui("enr:-JK4QI4kNxejsUQy4tBtZ4qQzxP6dGgO5pOXtO5BCO4vZnSVT8diMQvzFGcE_Oo5eBpJnfapk5XmceQGRS219uusJiKGAZWjmBUCY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhA6KONVoBAYiwKt8JvCZ25AkBZpXFF32nHDXpjKg7_PIGg3VkcIJxUg")]
+    #[case::shisui("enr:-JK4QHtmuXXpsSHZuAhrU6x92_ZwfoStUaOpdONILL6fXmfcb1J0FlOtFzvx607_-aF2gGZ9Cq8oBIsdRMgAHW469fiGAZWjmBTuY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhAlFaXz8MaWPwQhlHmJ9fbfClL1kV-p_WEn8UkwAWS8_Kg3VkcIJxWQ")]
+    #[case::shisui("enr:-JK4QGSDZS6hZiaFegp5jpXB1T7H_x3qRwSS_keqy_9jjoVTUQEf2KGA66yUPH0pkbe-MSix8j1hjDxqTeR5TWo5A1WGAZWjmBWZY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhAit9RUv-oakSH8EY2tkjswHjktJ_9IMusw4eKlI3Zh0ag3VkcIJxVQ")]
+    #[test_log::test(tokio::test)]
+    #[serial_test::serial]
+    async fn find_nodes(#[case] peer: &str) -> anyhow::Result<()> {
+        let peer = Enr::from_str(peer).unwrap();
+        info!(
+            "Peer: {:?} client_info: {:?}",
+            peer.node_id(),
+            peer.get_decodable::<String>("c")
+                .and_then(|client| client.ok()),
+        );
+
+        let config = TrinConfig {
+            web3_transport: trin_utils::cli::Web3TransportType::HTTP,
+            ephemeral: true,
+            bootnodes: portalnet::bootnodes::Bootnodes::None,
+            no_upnp: true,
+            ..TrinConfig::default()
+        };
+        let trin = run_trin(config)
+            .await
+            .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+        let http_client = trin.http_client().unwrap();
+        // info!("Sending Ping");
+        // http_client.ping(peer.clone(), None, None).await?;
+        info!("Sending Find Nodes");
+        http_client.find_nodes(peer.clone(), vec![255, 254]).await?;
+
+        Ok(())
+    }
+}
