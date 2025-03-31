@@ -35,12 +35,12 @@ use crate::{discovery::Discovery, types::FindContentResult};
 const FIND_NODES_MAX_DISTANCE_DIFFERENCE: u16 = 3;
 
 #[derive(Debug, Clone)]
-pub struct ServiceConfig {
+pub struct ProtocolConfig {
     pub incoming_talk_request_capacity: usize,
     pub outgoing_talk_request_capacity: usize,
 }
 
-pub struct Service<TContentKey, TMetric> {
+pub struct Protocol<TContentKey, TMetric> {
     subnetwork: Subnetwork,
     discovery: Arc<Discovery>,
     utp_socket: Arc<UtpSocket<UtpPeer>>,
@@ -49,57 +49,18 @@ pub struct Service<TContentKey, TMetric> {
     _phantom_metric: PhantomData<TMetric>,
 }
 
-impl<TContentKey, TMetric> Service<TContentKey, TMetric>
+impl<TContentKey, TMetric> Protocol<TContentKey, TMetric>
 where
     TContentKey: 'static + Send + Sync + OverlayContentKey,
     TMetric: 'static + Send + Sync + Metric,
 {
-    pub fn spawn(
-        subnetwork: Subnetwork,
-        discovery: Arc<Discovery>,
-        utp_socket: Arc<UtpSocket<UtpPeer>>,
-        config: ServiceConfig,
-    ) -> anyhow::Result<Arc<Self>> {
-        let outgoing_semaphore = Semaphore::new(config.outgoing_talk_request_capacity);
-        let service = Arc::new(Self::new(
-            subnetwork,
-            discovery,
-            utp_socket,
-            Arc::new(outgoing_semaphore),
-        ));
-        Self::start(&service, &config);
-        Ok(service)
-    }
-
-    pub fn start(service: &Arc<Self>, config: &ServiceConfig) {
-        let subnetwork = service.subnetwork;
-        let service = Arc::clone(service);
-
-        let (query_rx, mut query_tx) = mpsc::channel(config.incoming_talk_request_capacity);
-        service
-            .discovery
-            .register_handler(service.subnetwork, query_rx);
-
-        tokio::spawn(async move {
-            loop {
-                let Some((enr, talk_request)) = query_tx.recv().await else {
-                    warn!(subnetwork=%service.subnetwork, "Query channel closed");
-                    break;
-                };
-                if let Err(err) = service.process_incoming_talk_request(enr, talk_request) {
-                    error!(%err, "Error processing incoming TALKREQ");
-                }
-            }
-        });
-        info!(%subnetwork, "Subnetwork Service started");
-    }
-
     pub fn new(
         subnetwork: Subnetwork,
         discovery: Arc<Discovery>,
         utp_socket: Arc<UtpSocket<UtpPeer>>,
-        outgoing_semaphore: Arc<Semaphore>,
+        config: &ProtocolConfig,
     ) -> Self {
+        let outgoing_semaphore = Arc::new(Semaphore::new(config.outgoing_talk_request_capacity));
         Self {
             subnetwork,
             discovery,
@@ -108,6 +69,40 @@ where
             _phantom_content_key: PhantomData,
             _phantom_metric: PhantomData,
         }
+    }
+
+    pub fn spawn(
+        subnetwork: Subnetwork,
+        discovery: Arc<Discovery>,
+        utp_socket: Arc<UtpSocket<UtpPeer>>,
+        config: ProtocolConfig,
+    ) -> anyhow::Result<Arc<Self>> {
+        let protocol = Arc::new(Self::new(subnetwork, discovery, utp_socket, &config));
+        Self::start(&protocol, &config);
+        Ok(protocol)
+    }
+
+    pub fn start(protocol: &Arc<Self>, config: &ProtocolConfig) {
+        let subnetwork = protocol.subnetwork;
+        let protocol = Arc::clone(protocol);
+
+        let (query_rx, mut query_tx) = mpsc::channel(config.incoming_talk_request_capacity);
+        protocol
+            .discovery
+            .register_handler(protocol.subnetwork, query_rx);
+
+        tokio::spawn(async move {
+            loop {
+                let Some((enr, talk_request)) = query_tx.recv().await else {
+                    warn!(subnetwork=%protocol.subnetwork, "Query channel closed");
+                    break;
+                };
+                if let Err(err) = protocol.process_incoming_talk_request(enr, talk_request) {
+                    error!(%err, "Error processing incoming TALKREQ");
+                }
+            }
+        });
+        info!(%subnetwork, "Subnetwork Service started");
     }
 
     fn process_incoming_talk_request(

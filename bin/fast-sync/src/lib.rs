@@ -20,9 +20,9 @@ use ethportal_api::{
 };
 use futures::future::JoinAll;
 use humanize_duration::{prelude::DurationExt, Truncate};
+use protocol::{Protocol, ProtocolConfig};
 use portalnet::discovery::UtpPeer;
 use rand::{seq::SliceRandom, thread_rng};
-use service::{Service, ServiceConfig};
 use ssz::Decode;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -32,7 +32,7 @@ use utp_socket::Discovery5UtpSocket;
 
 pub mod census;
 pub mod discovery;
-pub mod service;
+pub mod protocol;
 pub mod types;
 pub mod utp_socket;
 
@@ -83,8 +83,7 @@ pub struct FastSync {
     args: Args,
     _discovery: Arc<Discovery>,
     _utp_socket: Arc<UtpSocket<UtpPeer>>,
-    history: Arc<Service<HistoryContentKey, XorMetric>>,
-    census: Arc<Census>,
+    history: Arc<Protocol<HistoryContentKey, XorMetric>>,
 }
 
 const BOOTNODES_PUBLIC: &[&str] = &[
@@ -106,188 +105,188 @@ impl FastSync {
         )));
 
         // Setup History Subnetwork
-        let history = Service::<HistoryContentKey, XorMetric>::spawn(
-            Subnetwork::History,
-            discovery.clone(),
-            utp_socket.clone(),
-            ServiceConfig {
-                incoming_talk_request_capacity: args.concurrency,
-                outgoing_talk_request_capacity: args.concurrency,
-            },
-        )?;
-
         let bootnodes = BOOTNODES_PUBLIC
             .iter()
             .map(|bootnode| Enr::from_str(bootnode).unwrap())
             .collect::<Vec<_>>();
 
-        let census = Arc::new(Census::new(history.clone(), args.concurrency));
-        census.init(&bootnodes).await?;
-        census.start();
+        let protocol = Protocol::<HistoryContentKey, XorMetric>::spawn(
+            Subnetwork::History,
+            discovery.clone(),
+            utp_socket.clone(),
+            ProtocolConfig {
+                bootnodes,
+                census_concurrency: args.concurrency,
+                incoming_talk_request_capacity: args.concurrency,
+                outgoing_talk_request_capacity: args.concurrency,
+            },
+        )
+        .await?;
+
+        info!("{}", protocol.census.debug_table());
 
         Ok(Arc::new(Self {
             args: args.clone(),
             _discovery: discovery,
             _utp_socket: utp_socket,
-            history,
-            census,
+            history: protocol,
         }))
     }
 
-    pub async fn fetch_block_bodies(
-        self: &Arc<Self>,
-        block_hashes: Vec<B256>,
-    ) -> anyhow::Result<(usize, usize)> {
-        let start_time = Instant::now();
+    // pub async fn fetch_block_bodies(
+    //     self: &Arc<Self>,
+    //     block_hashes: Vec<B256>,
+    // ) -> anyhow::Result<(usize, usize)> {
+    //     let start_time = Instant::now();
 
-        let mut total_success = 0;
-        let mut total_failure = 0;
+    //     let mut total_success = 0;
+    //     let mut total_failure = 0;
 
-        if self.args.first_block > self.args.last_block || self.args.last_block > block_hashes.len()
-        {
-            bail!(
-                "Invalid block range: {}-{}",
-                self.args.first_block,
-                self.args.last_block,
-            );
-        }
+    //     if self.args.first_block > self.args.last_block || self.args.last_block > block_hashes.len()
+    //     {
+    //         bail!(
+    //             "Invalid block range: {}-{}",
+    //             self.args.first_block,
+    //             self.args.last_block,
+    //         );
+    //     }
 
-        let mut batch_start = self.args.first_block;
-        while batch_start <= self.args.last_block {
-            let batch_end =
-                usize::min(batch_start + self.args.batch_size - 1, self.args.last_block);
+    //     let mut batch_start = self.args.first_block;
+    //     while batch_start <= self.args.last_block {
+    //         let batch_end =
+    //             usize::min(batch_start + self.args.batch_size - 1, self.args.last_block);
 
-            let batch_start_time = Instant::now();
-            let (success, failure) = self
-                .fetch_block_bodies_batch(&block_hashes[batch_start..=batch_end])
-                .await?;
-            info!(
-                "Finished block_bodies_batch {}-{} in {} = {}/{}",
-                batch_start,
-                batch_end,
-                batch_start_time.elapsed().human(Truncate::Second),
-                success,
-                failure,
-            );
+    //         let batch_start_time = Instant::now();
+    //         let (success, failure) = self
+    //             .fetch_block_bodies_batch(&block_hashes[batch_start..=batch_end])
+    //             .await?;
+    //         info!(
+    //             "Finished block_bodies_batch {}-{} in {} = {}/{}",
+    //             batch_start,
+    //             batch_end,
+    //             batch_start_time.elapsed().human(Truncate::Second),
+    //             success,
+    //             failure,
+    //         );
 
-            total_success += success;
-            total_failure += failure;
-            batch_start += self.args.batch_size;
-        }
+    //         total_success += success;
+    //         total_failure += failure;
+    //         batch_start += self.args.batch_size;
+    //     }
 
-        info!(
-            "Finished block_bodies {}-{} in {} = {}/{}",
-            self.args.first_block,
-            self.args.last_block,
-            start_time.elapsed().human(Truncate::Second),
-            total_success,
-            total_failure,
-        );
-        Ok((total_success, total_failure))
-    }
+    //     info!(
+    //         "Finished block_bodies {}-{} in {} = {}/{}",
+    //         self.args.first_block,
+    //         self.args.last_block,
+    //         start_time.elapsed().human(Truncate::Second),
+    //         total_success,
+    //         total_failure,
+    //     );
+    //     Ok((total_success, total_failure))
+    // }
 
-    pub async fn fetch_block_bodies_batch(
-        self: &Arc<Self>,
-        block_hashes: &[B256],
-    ) -> anyhow::Result<(usize, usize)> {
-        let mut success = 0;
-        let mut failure = 0;
+    // pub async fn fetch_block_bodies_batch(
+    //     self: &Arc<Self>,
+    //     block_hashes: &[B256],
+    // ) -> anyhow::Result<(usize, usize)> {
+    //     let mut success = 0;
+    //     let mut failure = 0;
 
-        let block_bodies = block_hashes
-            .iter()
-            .map(|block_hash| async {
-                let fast_sync = self.clone();
-                let block_hash = *block_hash;
-                tokio::spawn(async move {
-                    let block_body = fast_sync.fetch_block_body(block_hash).await;
-                    (block_hash, block_body)
-                })
-                .await
-            })
-            .collect::<JoinAll<_>>()
-            .await;
+    //     let block_bodies = block_hashes
+    //         .iter()
+    //         .map(|block_hash| async {
+    //             let fast_sync = self.clone();
+    //             let block_hash = *block_hash;
+    //             tokio::spawn(async move {
+    //                 let block_body = fast_sync.fetch_block_body(block_hash).await;
+    //                 (block_hash, block_body)
+    //             })
+    //             .await
+    //         })
+    //         .collect::<JoinAll<_>>()
+    //         .await;
 
-        for task_result in block_bodies {
-            let Ok((block_hash, block_body)) = task_result else {
-                failure += 1;
-                continue;
-            };
-            match block_body {
-                Ok(_block_body) => success += 1,
-                Err(err) => {
-                    error!("Block body for {block_hash} not fetched: {err}");
-                    failure += 1;
-                }
-            }
-        }
+    //     for task_result in block_bodies {
+    //         let Ok((block_hash, block_body)) = task_result else {
+    //             failure += 1;
+    //             continue;
+    //         };
+    //         match block_body {
+    //             Ok(_block_body) => success += 1,
+    //             Err(err) => {
+    //                 error!("Block body for {block_hash} not fetched: {err}");
+    //                 failure += 1;
+    //             }
+    //         }
+    //     }
 
-        Ok((success, failure))
-    }
+    //     Ok((success, failure))
+    // }
 
-    pub async fn fetch_block_body(self: &Arc<Self>, block_hash: B256) -> anyhow::Result<BlockBody> {
-        let content_key = HistoryContentKey::new_block_body(block_hash);
+    // pub async fn fetch_block_body(self: &Arc<Self>, block_hash: B256) -> anyhow::Result<BlockBody> {
+    //     let content_key = HistoryContentKey::new_block_body(block_hash);
 
-        let peers = self.census.select_peers(&content_key.content_id())?;
+    //     let peers = self.census.select_peers(&content_key.content_id())?;
 
-        let mut weight = 1.0;
-        let mut peers = peers
-            .into_iter()
-            .map(|(peer, _radius)| {
-                weight /= 2.0;
-                (peer, weight)
-            })
-            .collect::<Vec<_>>();
+    //     let mut weight = 1.0;
+    //     let mut peers = peers
+    //         .into_iter()
+    //         .map(|(peer, _radius)| {
+    //             weight /= 2.0;
+    //             (peer, weight)
+    //         })
+    //         .collect::<Vec<_>>();
 
-        let mut attempts = 0;
-        while attempts < self.args.max_tries {
-            attempts += 1;
-            let Ok((peer, peer_weight)) =
-                peers.choose_weighted_mut(&mut thread_rng(), |(_peer, weight)| *weight)
-            else {
-                bail!(
-                    "No peers available for content_key: {}",
-                    content_key.to_hex(),
-                );
-            };
-            match self.history.send_find_content(peer, &content_key).await {
-                Ok(FindContentResult::Content(content_value_bytes)) => {
-                    match BlockBody::from_ssz_bytes(&content_value_bytes) {
-                        Ok(block_body) => return Ok(block_body),
-                        Err(err) => {
-                            error!(
-                                bytes=?content_value_bytes,
-                                "Can't decode BlockBody: {err:?}",
-                            );
-                            *peer_weight = 0.;
-                        }
-                    }
-                }
-                Ok(FindContentResult::Peers(_other_peers)) => {
-                    // Peer doesn't have content
-                    // Consider informing census of these peers.
-                    // self.census.peers_discovered(other_peers);
-                    *peer_weight = 0.;
-                }
-                Err(err) => {
-                    warn!(
-                        peer_id=%peer.node_id(),
-                        peer_client_info=?peer.get_decodable::<String>("c").and_then(|client| client.ok()),
-                        "Error fetching content from peer: {err}",
-                    );
-                    *peer_weight /= 2.;
-                }
-            }
-        }
-        bail!("Tried {attempts} times, content not fetched!");
-    }
+    //     let mut attempts = 0;
+    //     while attempts < self.args.max_tries {
+    //         attempts += 1;
+    //         let Ok((peer, peer_weight)) =
+    //             peers.choose_weighted_mut(&mut thread_rng(), |(_peer, weight)| *weight)
+    //         else {
+    //             bail!(
+    //                 "No peers available for content_key: {}",
+    //                 content_key.to_hex(),
+    //             );
+    //         };
+    //         match self.history.send_find_content(peer, &content_key).await {
+    //             Ok(FindContentResult::Content(content_value_bytes)) => {
+    //                 match BlockBody::from_ssz_bytes(&content_value_bytes) {
+    //                     Ok(block_body) => return Ok(block_body),
+    //                     Err(err) => {
+    //                         error!(
+    //                             bytes=?content_value_bytes,
+    //                             "Can't decode BlockBody: {err:?}",
+    //                         );
+    //                         *peer_weight = 0.;
+    //                     }
+    //                 }
+    //             }
+    //             Ok(FindContentResult::Peers(_other_peers)) => {
+    //                 // Peer doesn't have content
+    //                 // Consider informing census of these peers.
+    //                 // self.census.peers_discovered(other_peers);
+    //                 *peer_weight = 0.;
+    //             }
+    //             Err(err) => {
+    //                 warn!(
+    //                     peer_id=%peer.node_id(),
+    //                     peer_client_info=?peer.get_decodable::<String>("c").and_then(|client| client.ok()),
+    //                     "Error fetching content from peer: {err}",
+    //                 );
+    //                 *peer_weight /= 2.;
+    //             }
+    //         }
+    //     }
+    //     bail!("Tried {attempts} times, content not fetched!");
+    // }
 
     pub async fn run(args: Args) -> anyhow::Result<()> {
         let path = args.block_hashes_path.clone();
         let block_hashes_future = tokio::spawn(async move { load_block_hashes(&path).await });
         let fast_sync = Self::create(&args).await?;
-        fast_sync
-            .fetch_block_bodies(block_hashes_future.await??)
-            .await?;
+        // fast_sync
+        //     .fetch_block_bodies(block_hashes_future.await??)
+        //     .await?;
         Ok(())
     }
 }
