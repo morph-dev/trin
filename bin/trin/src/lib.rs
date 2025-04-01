@@ -207,20 +207,24 @@ pub async fn run_trin(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::str::FromStr;
 
     use discv5::Enr;
     use ethportal_api::HistoryNetworkApiClient;
 
+    use super::*;
+
     #[rstest::rstest]
     #[case::ultralight("enr:-I24QNw9C_xJvljho0dO27ug7-wZg7KCN1Mmqefdvqwxxqw3X-SLzBO3-KvzCbGFFJJMDn1be6Hd-Bf_TR3afjrwZ7UEY4d1IDAuMC4xgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o")]
     #[case::ultralight("enr:-I24QHZRM9Sd3UgUOdB443q3nX6NOUsg0VMyarcfD69z8M3SB1vW2hkqiPFczPpyY6wSUCcUeXTig75sC5fT4YnsL7MEY4d1IDAuMC4xgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQMGuOLosx85PYtBn7rULoHY9EAtLmGTn7XWoIvFqvq4qIN1ZHCCE5A")]
+    #[case::ultralight("enr:-JG4QKNYxjMX4BKh2i5rH77X5WBwIuVvShRcJUr-mRpVxUp8I0PcLlFd2KVTfu3m09WbvHC7n57-nK6LEv0b5u4yJWMGY4d1IDAuMC4xgmlkgnY0gmlwhKRc9-KCcHYAiXNlY3AyNTZrMaECiVGpimDtBVr4b__h-KdZy3cgKl2VhhM5G_S5Ozbb60eDdWRwghOL")]
+    #[case::ultralight("enr:-JG4QHbB05stlP_sVuszwPnV4Kul4cyD6plOroltCTQ1sK8CPcH9pVPXk_B4qPKJvJFLXwsCtV25PG4RVEwL18P8l9MGY4d1IDAuMC4xgmlkgnY0gmlwhKRc9-KCcHYAiXNlY3AyNTZrMaECTKR5ho9cUj9TvjH35P42CB1XIOrWOfwo5llYNYCRLDyDdWRwghOK")]
+    #[case::ultralight("enr:-JG4QFD7CsW8CeYgRjlxeTrAW4-IPT0wYMmyop2wvVFSp9gEMNEuUxLiPzFhIL1FzUdTPxp3lSwFc_9gF5dJAv2kwFsGY4d1IDAuMC4xgmlkgnY0gmlwhKRc9-KCcHYAiXNlY3AyNTZrMaECm9YykPt7HcywCC_mvijOM01Z5oBiCi7ipYetVBqFPI2DdWRwghON")]
     #[case::shisui("enr:-JK4QNGJ9PrXXL7cUtHkYYMldhxhE1Gl7Oj0BivtyAG4VO5fb1SSfTrhnKEu_7djWO9pT8dvlY_WoASTOotmK4Zc79GGAZWjmBRnY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhAuPiFr-WggAR3YFIMqjXW4gXmpVE6WnImR9W5NpiFLNzg3VkcIJxWA")]
     #[case::shisui("enr:-JK4QI4kNxejsUQy4tBtZ4qQzxP6dGgO5pOXtO5BCO4vZnSVT8diMQvzFGcE_Oo5eBpJnfapk5XmceQGRS219uusJiKGAZWjmBUCY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhA6KONVoBAYiwKt8JvCZ25AkBZpXFF32nHDXpjKg7_PIGg3VkcIJxUg")]
     #[case::shisui("enr:-JK4QHtmuXXpsSHZuAhrU6x92_ZwfoStUaOpdONILL6fXmfcb1J0FlOtFzvx607_-aF2gGZ9Cq8oBIsdRMgAHW469fiGAZWjmBTuY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhAlFaXz8MaWPwQhlHmJ9fbfClL1kV-p_WEn8UkwAWS8_Kg3VkcIJxWQ")]
     #[case::shisui("enr:-JK4QGSDZS6hZiaFegp5jpXB1T7H_x3qRwSS_keqy_9jjoVTUQEf2KGA66yUPH0pkbe-MSix8j1hjDxqTeR5TWo5A1WGAZWjmBWZY4ZzaGlzdWmCaWSCdjSCaXCEQW1FYolzZWNwMjU2azGhAit9RUv-oakSH8EY2tkjswHjktJ_9IMusw4eKlI3Zh0ag3VkcIJxVQ")]
+    // #[case::custom_shisui("enr:-Ja4QOzueJsM5J5ynbXuEabzpmhL-yaqUJrw8gfyp22U71kTHzE7dpM5HZu3HSYSSeqr2CD3C5giKwy-4qe5F6BX9zOGAZXs-il9Y4ZzaGlzdWmCaWSCdjSCaXCEJRu08IJwdgCJc2VjcDI1NmsxoQL-9ODgfz1-OfWXsF25dTVTbQcYNV3SuwagP0BEMYTMqIN1ZHCCIzE")]
     #[test_log::test(tokio::test)]
     #[serial_test::serial]
     async fn find_nodes(#[case] peer: &str) -> anyhow::Result<()> {

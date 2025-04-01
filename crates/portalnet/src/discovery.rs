@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use discv5::{
     enr::{CombinedKey, Enr as Discv5Enr, NodeId},
+    handler::NodeContact,
     service::Pong,
     ConfigBuilder, Discv5, Event, ListenConfig, QueryError, RequestError, TalkRequest,
 };
@@ -347,7 +348,15 @@ impl Discovery {
             }
         };
 
-        let response = self.discv5.talk_req(enr, protocol, request).await?;
+        let response = self
+            .discv5
+            .talk_req(
+                NodeContact::try_from_enr(enr, discv5::IpMode::DualStack)
+                    .expect("should generate NodeContact from Enr"),
+                protocol,
+                request,
+            )
+            .await?;
         Ok(Bytes::from(response))
     }
 
