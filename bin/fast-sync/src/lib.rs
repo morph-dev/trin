@@ -16,23 +16,22 @@ use discovery::Discovery;
 use discv5::Enr;
 use ethportal_api::{
     types::{distance::XorMetric, network::Subnetwork},
-    BlockBody, HistoryContentKey, OverlayContentKey,
+    HistoryContentKey, HistoryContentValue,
 };
 use futures::future::JoinAll;
 use humanize_duration::{prelude::DurationExt, Truncate};
+use network::{Network, NetworkConfig};
 use portalnet::discovery::UtpPeer;
-use rand::{seq::SliceRandom, thread_rng};
-use service::{Service, ServiceConfig};
-use ssz::Decode;
+use protocol::{Protocol, ProtocolConfig};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
-use types::FindContentResult;
+use tracing::{error, info};
 use utp_rs::socket::UtpSocket;
 use utp_socket::Discovery5UtpSocket;
 
 pub mod census;
 pub mod discovery;
-pub mod service;
+pub mod network;
+pub mod protocol;
 pub mod types;
 pub mod utp_socket;
 
@@ -76,15 +75,14 @@ pub struct Args {
     pub batch_size: usize,
 
     #[arg(long, default_value_t = 20)]
-    pub max_tries: usize,
+    pub max_attemps: usize,
 }
 
 pub struct FastSync {
     args: Args,
     _discovery: Arc<Discovery>,
     _utp_socket: Arc<UtpSocket<UtpPeer>>,
-    history: Arc<Service<HistoryContentKey, XorMetric>>,
-    census: Arc<Census>,
+    history: Arc<Network<HistoryContentKey, XorMetric>>,
 }
 
 const BOOTNODES_PUBLIC: &[&str] = &[
@@ -94,7 +92,7 @@ const BOOTNODES_PUBLIC: &[&str] = &[
 ];
 
 impl FastSync {
-    pub async fn create(args: &Args) -> anyhow::Result<Arc<Self>> {
+    pub async fn new(args: &Args) -> anyhow::Result<Self> {
         // Setup discv5
         let discovery = Discovery::spawn(args.into()).await?;
 
@@ -106,36 +104,47 @@ impl FastSync {
         )));
 
         // Setup History Subnetwork
-        let history = Service::<HistoryContentKey, XorMetric>::spawn(
-            Subnetwork::History,
-            discovery.clone(),
-            utp_socket.clone(),
-            ServiceConfig {
-                incoming_talk_request_capacity: args.concurrency,
-                outgoing_talk_request_capacity: args.concurrency,
-            },
-        )?;
-
         let bootnodes = BOOTNODES_PUBLIC
             .iter()
             .map(|bootnode| Enr::from_str(bootnode).unwrap())
             .collect::<Vec<_>>();
 
-        let census = Arc::new(Census::new(history.clone(), args.concurrency));
-        census.init(&bootnodes).await?;
-        census.start();
+        let protocol = Protocol::<HistoryContentKey, XorMetric>::spawn(
+            ProtocolConfig {
+                incoming_talk_request_capacity: args.concurrency,
+                outgoing_talk_request_capacity: args.concurrency,
+            },
+            Subnetwork::History,
+            discovery.clone(),
+            utp_socket.clone(),
+        )?;
 
-        Ok(Arc::new(Self {
+        let census = Census::<HistoryContentKey, XorMetric>::spawn(
+            Arc::clone(&protocol),
+            args.concurrency,
+            &bootnodes,
+        )
+        .await?;
+        info!("{}", census.debug_table());
+
+        let history = Network::new(
+            NetworkConfig {
+                max_attemps: args.max_attemps,
+            },
+            protocol,
+            census,
+        );
+
+        Ok(Self {
             args: args.clone(),
             _discovery: discovery,
             _utp_socket: utp_socket,
-            history,
-            census,
-        }))
+            history: Arc::new(history),
+        })
     }
 
     pub async fn fetch_block_bodies(
-        self: &Arc<Self>,
+        &self,
         block_hashes: Vec<B256>,
     ) -> anyhow::Result<(usize, usize)> {
         let start_time = Instant::now();
@@ -187,7 +196,7 @@ impl FastSync {
     }
 
     pub async fn fetch_block_bodies_batch(
-        self: &Arc<Self>,
+        &self,
         block_hashes: &[B256],
     ) -> anyhow::Result<(usize, usize)> {
         let mut success = 0;
@@ -196,10 +205,13 @@ impl FastSync {
         let block_bodies = block_hashes
             .iter()
             .map(|block_hash| async {
-                let fast_sync = self.clone();
+                let history = Arc::clone(&self.history);
                 let block_hash = *block_hash;
                 tokio::spawn(async move {
-                    let block_body = fast_sync.fetch_block_body(block_hash).await;
+                    let content_key = HistoryContentKey::new_block_body(block_hash);
+                    let block_body = history
+                        .get_content_value::<HistoryContentValue>(content_key)
+                        .await;
                     (block_hash, block_body)
                 })
                 .await
@@ -224,67 +236,10 @@ impl FastSync {
         Ok((success, failure))
     }
 
-    pub async fn fetch_block_body(self: &Arc<Self>, block_hash: B256) -> anyhow::Result<BlockBody> {
-        let content_key = HistoryContentKey::new_block_body(block_hash);
-
-        let peers = self.census.select_peers(&content_key.content_id())?;
-
-        let mut weight = 1.0;
-        let mut peers = peers
-            .into_iter()
-            .map(|(peer, _radius)| {
-                weight /= 2.0;
-                (peer, weight)
-            })
-            .collect::<Vec<_>>();
-
-        let mut attempts = 0;
-        while attempts < self.args.max_tries {
-            attempts += 1;
-            let Ok((peer, peer_weight)) =
-                peers.choose_weighted_mut(&mut thread_rng(), |(_peer, weight)| *weight)
-            else {
-                bail!(
-                    "No peers available for content_key: {}",
-                    content_key.to_hex(),
-                );
-            };
-            match self.history.send_find_content(peer, &content_key).await {
-                Ok(FindContentResult::Content(content_value_bytes)) => {
-                    match BlockBody::from_ssz_bytes(&content_value_bytes) {
-                        Ok(block_body) => return Ok(block_body),
-                        Err(err) => {
-                            error!(
-                                bytes=?content_value_bytes,
-                                "Can't decode BlockBody: {err:?}",
-                            );
-                            *peer_weight = 0.;
-                        }
-                    }
-                }
-                Ok(FindContentResult::Peers(_other_peers)) => {
-                    // Peer doesn't have content
-                    // Consider informing census of these peers.
-                    // self.census.peers_discovered(other_peers);
-                    *peer_weight = 0.;
-                }
-                Err(err) => {
-                    warn!(
-                        peer_id=%peer.node_id(),
-                        peer_client_info=?peer.get_decodable::<String>("c").and_then(|client| client.ok()),
-                        "Error fetching content from peer: {err}",
-                    );
-                    *peer_weight /= 2.;
-                }
-            }
-        }
-        bail!("Tried {attempts} times, content not fetched!");
-    }
-
     pub async fn run(args: Args) -> anyhow::Result<()> {
         let path = args.block_hashes_path.clone();
         let block_hashes_future = tokio::spawn(async move { load_block_hashes(&path).await });
-        let fast_sync = Self::create(&args).await?;
+        let fast_sync = Self::new(&args).await?;
         fast_sync
             .fetch_block_bodies(block_hashes_future.await??)
             .await?;

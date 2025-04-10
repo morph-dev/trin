@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, time::Instant};
+use std::{collections::VecDeque, fmt::Debug, time::Instant};
 
 use discv5::{enr::NodeId, Enr};
 use ethportal_api::types::distance::{Distance, Metric, XorMetric};
@@ -9,10 +9,10 @@ pub struct LivenessCheck {
     pub timestamp: Instant,
 }
 
-#[derive(Debug)]
 pub struct Peer {
     enr: Enr,
     radius: Distance,
+    reputation: f32,
     liveness_checks: VecDeque<LivenessCheck>,
 }
 
@@ -22,10 +22,17 @@ impl Peer {
     /// The peers is considered alive is any of this many recent liveness checks was successful.
     const RECENT_LIVE_CHECKS: usize = 2;
 
+    const REPUTATION_START_VALUE: f32 = 50.;
+    const REPUTATION_MIN_VALUE: f32 = 1.;
+    const REPUTATION_MAX_VALUE: f32 = 100.;
+    const REPUTATION_BOOST: f32 = 1.;
+    const REPUTATION_SLASHING_FACTOR: f32 = 0.5;
+
     pub fn new(enr: Enr) -> Self {
         Self {
             enr,
             radius: Distance::ZERO,
+            reputation: Self::REPUTATION_START_VALUE,
             liveness_checks: VecDeque::with_capacity(Self::MAX_LIVENESS_CHECKS + 1),
         }
     }
@@ -34,12 +41,23 @@ impl Peer {
         self.enr.clone()
     }
 
+    pub fn client(&self) -> String {
+        self.enr
+            .get_decodable::<String>("c")
+            .and_then(|client| client.ok())
+            .unwrap_or("(unknown)".to_string())
+    }
+
     pub fn node_id(&self) -> NodeId {
         self.enr.node_id()
     }
 
     pub fn radius(&self) -> Distance {
         self.radius
+    }
+
+    pub fn reputation(&self) -> f32 {
+        self.reputation
     }
 
     pub fn is_alive(&self) -> bool {
@@ -71,7 +89,7 @@ impl Peer {
             "Received enr for different peer. Expected node-id: {}, received enr: {enr}",
             self.enr.node_id(),
         );
-
+        self.record_rpc_result(/* success= */ true);
         if self.enr.seq() <= enr.seq() {
             self.enr = enr;
         }
@@ -84,11 +102,23 @@ impl Peer {
     }
 
     pub fn record_failed_liveness_check(&mut self) {
+        self.record_rpc_result(/* success= */ false);
         self.liveness_checks.push_front(LivenessCheck {
             success: false,
             timestamp: Instant::now(),
         });
         self.purge();
+    }
+
+    pub fn record_rpc_result(&mut self, success: bool) {
+        if success {
+            self.reputation += Self::REPUTATION_BOOST;
+        } else {
+            self.reputation *= Self::REPUTATION_SLASHING_FACTOR;
+        }
+        self.reputation = self
+            .reputation
+            .clamp(Self::REPUTATION_MIN_VALUE, Self::REPUTATION_MAX_VALUE);
     }
 
     /// Removes oldest liveness checks and offer events, if we exceeded capacity.
@@ -103,5 +133,15 @@ impl Peer {
 
     pub fn iter_liveness_checks(&self) -> impl Iterator<Item = &LivenessCheck> {
         self.liveness_checks.iter()
+    }
+}
+
+impl Debug for Peer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Peer")
+            .field("is_alive", &self.is_alive())
+            .field("node_id", &self.node_id())
+            .field("reputation", &self.reputation)
+            .finish_non_exhaustive()
     }
 }

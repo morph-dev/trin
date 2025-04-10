@@ -1,14 +1,14 @@
-use std::{sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use discv5::{enr::NodeId, Enr};
 use ethportal_api::{
     generate_random_node_ids,
     types::{
-        distance::{Distance, XorMetric},
+        distance::{Distance, Metric},
         ping_extensions::decode::PingExtension,
     },
-    HistoryContentKey,
+    OverlayContentKey,
 };
 use futures::{future::JoinAll, StreamExt};
 use itertools::Itertools;
@@ -16,7 +16,7 @@ use peers::Peers;
 use tokio::{select, sync::Semaphore, time::Instant};
 use tracing::{error, info, warn};
 
-use crate::service::Service;
+use crate::protocol::Protocol;
 
 pub mod peer;
 pub mod peers;
@@ -44,23 +44,42 @@ pub enum CensusError {
 }
 
 #[derive(Clone)]
-pub struct Census {
+pub struct Census<TContentKey, TMetric> {
+    protocol: Arc<Protocol<TContentKey, TMetric>>,
     peers: Peers,
-    network: Arc<Service<HistoryContentKey, XorMetric>>,
     semaphore: Arc<Semaphore>,
+    _phantom_content_key: PhantomData<TContentKey>,
+    _phantom_metric: PhantomData<TMetric>,
 }
 
-impl Census {
+impl<TContentKey, TMetric> Census<TContentKey, TMetric>
+where
+    TContentKey: 'static + Send + Sync + OverlayContentKey,
+    TMetric: 'static + Send + Sync + Metric,
+{
     const DISCOVERY_DEGREE: u32 = 4;
     const DISCOVERY_PEERS: usize = 5;
     const DISCOVERY_INTERVAL: Duration = Duration::from_secs(/* 10min= */ 600);
     const STOP_FRACTION_THRESHOLD: f64 = 0.01;
 
-    pub fn new(network: Arc<Service<HistoryContentKey, XorMetric>>, concurrency: usize) -> Self {
+    pub async fn spawn(
+        protocol: Arc<Protocol<TContentKey, TMetric>>,
+        concurrency: usize,
+        bootnodes: &[Enr],
+    ) -> Result<Arc<Self>, CensusError> {
+        let census = Arc::new(Self::new(protocol, concurrency));
+        census.init(bootnodes).await?;
+        census.start();
+        Ok(census)
+    }
+
+    pub fn new(protocol: Arc<Protocol<TContentKey, TMetric>>, concurrency: usize) -> Self {
         Self {
+            protocol,
             peers: Peers::new(),
-            network,
             semaphore: Arc::new(Semaphore::new(concurrency)),
+            _phantom_content_key: PhantomData,
+            _phantom_metric: PhantomData,
         }
     }
 
@@ -100,11 +119,13 @@ impl Census {
     }
 
     pub fn start(self: &Arc<Self>) {
-        let census = self.clone();
-        let mut peers = self.peers.clone();
+        let census = Arc::clone(self);
 
         tokio::spawn(async move {
+            let mut peers = census.peers.clone();
+
             let mut discovery_interval = tokio::time::interval(Self::DISCOVERY_INTERVAL);
+            discovery_interval.reset();
 
             loop {
                 select! {
@@ -155,9 +176,13 @@ impl Census {
                     };
                     let mut all_enrs = vec![];
                     for node_id in node_ids {
-                        match self.network.send_find_nodes(&peer, node_id).await {
-                            Ok(enrs) => all_enrs.extend(enrs),
+                        match self.protocol.send_find_nodes(&peer, node_id).await {
+                            Ok(enrs) => {
+                                self.record_rpc_result(&peer.node_id(), /* success= */ true);
+                                all_enrs.extend(enrs)
+                            }
                             Err(err) => {
+                                self.record_rpc_result(&peer.node_id(), /* success= */ false);
                                 error!(
                                     %err,
                                     peer_id=%peer.node_id(),
@@ -211,6 +236,10 @@ impl Census {
         new_peers
     }
 
+    pub fn peers(&self) -> &Peers {
+        &self.peers
+    }
+
     /// Performs liveness check.
     ///
     /// Liveness check will pass if peer respond to a Ping request. It returns
@@ -225,14 +254,14 @@ impl Census {
             return LivenessResult::Fresh;
         }
 
-        let Ok(pong) = self.network.send_ping(enr).await else {
+        let Ok(pong) = self.protocol.send_ping(enr).await else {
             self.peers.record_failed_liveness_check(enr);
             return LivenessResult::Fail;
         };
 
         // If ENR seq is not the latest one, fetch fresh ENR
         let fresh_enr = if enr.seq() < pong.enr_seq {
-            let Ok(enr) = self.network.send_get_enr(enr).await else {
+            let Ok(enr) = self.protocol.send_get_enr(enr).await else {
                 self.peers.record_failed_liveness_check(enr);
                 return LivenessResult::Fail;
             };
@@ -261,12 +290,17 @@ impl Census {
         LivenessResult::Pass
     }
 
+    pub fn record_rpc_result(&self, peer: &NodeId, success: bool) {
+        self.peers.record_rpc_result(peer, success);
+    }
+
     pub fn peers_discovered(self: &Arc<Self>, peers: Vec<Enr>) {
         let census = self.clone();
+        let unknown_peers = peers
+            .into_iter()
+            .filter(|peer| self.peers.get_peer(&peer.node_id()).is_none())
+            .collect::<Vec<_>>();
         tokio::spawn(async move {
-            let unknown_peers = peers
-                .into_iter()
-                .filter(|peer| census.peers.get_peer(&peer.node_id()).is_some());
             for peer in unknown_peers {
                 census.liveness_check(&peer).await;
             }
@@ -285,5 +319,9 @@ impl Census {
             return Err(CensusError::NoPeers);
         }
         Ok(self.peers.select_peers(content_id))
+    }
+
+    pub fn debug_table(&self) -> String {
+        self.peers.debug_table()
     }
 }

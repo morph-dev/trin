@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail};
 use discv5::{enr::NodeId, Enr, TalkRequest};
 use ethportal_api::{
     types::{
+        accept_code::AcceptCodeList,
         distance::{Distance, Metric},
         network::Subnetwork,
         ping_extensions::{
@@ -20,12 +21,12 @@ use ethportal_api::{
             Accept, Content, CustomPayload, FindContent, FindNodes, Message, Nodes, Offer, Ping,
             Pong,
         },
+        protocol_versions::ProtocolVersion,
     },
     OverlayContentKey,
 };
 use portalnet::{discovery::UtpPeer, utp::controller::UTP_CONN_CFG};
 use ssz::{Decode, Encode};
-use ssz_types::BitList;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, warn};
 use utp_rs::{peer::Peer, socket::UtpSocket};
@@ -35,12 +36,13 @@ use crate::{discovery::Discovery, types::FindContentResult};
 const FIND_NODES_MAX_DISTANCE_DIFFERENCE: u16 = 3;
 
 #[derive(Debug, Clone)]
-pub struct ServiceConfig {
+pub struct ProtocolConfig {
     pub incoming_talk_request_capacity: usize,
     pub outgoing_talk_request_capacity: usize,
 }
 
-pub struct Service<TContentKey, TMetric> {
+pub struct Protocol<TContentKey, TMetric> {
+    config: ProtocolConfig,
     subnetwork: Subnetwork,
     discovery: Arc<Discovery>,
     utp_socket: Arc<UtpSocket<UtpPeer>>,
@@ -49,58 +51,31 @@ pub struct Service<TContentKey, TMetric> {
     _phantom_metric: PhantomData<TMetric>,
 }
 
-impl<TContentKey, TMetric> Service<TContentKey, TMetric>
+impl<TContentKey, TMetric> Protocol<TContentKey, TMetric>
 where
     TContentKey: 'static + Send + Sync + OverlayContentKey,
     TMetric: 'static + Send + Sync + Metric,
 {
     pub fn spawn(
+        config: ProtocolConfig,
         subnetwork: Subnetwork,
         discovery: Arc<Discovery>,
         utp_socket: Arc<UtpSocket<UtpPeer>>,
-        config: ServiceConfig,
     ) -> anyhow::Result<Arc<Self>> {
-        let outgoing_semaphore = Semaphore::new(config.outgoing_talk_request_capacity);
-        let service = Arc::new(Self::new(
-            subnetwork,
-            discovery,
-            utp_socket,
-            Arc::new(outgoing_semaphore),
-        ));
-        Self::start(&service, &config);
-        Ok(service)
-    }
-
-    pub fn start(service: &Arc<Self>, config: &ServiceConfig) {
-        let subnetwork = service.subnetwork;
-        let service = Arc::clone(service);
-
-        let (query_rx, mut query_tx) = mpsc::channel(config.incoming_talk_request_capacity);
-        service
-            .discovery
-            .register_handler(service.subnetwork, query_rx);
-
-        tokio::spawn(async move {
-            loop {
-                let Some((enr, talk_request)) = query_tx.recv().await else {
-                    warn!(subnetwork=%service.subnetwork, "Query channel closed");
-                    break;
-                };
-                if let Err(err) = service.process_incoming_talk_request(enr, talk_request) {
-                    error!(%err, "Error processing incoming TALKREQ");
-                }
-            }
-        });
-        info!(%subnetwork, "Subnetwork Service started");
+        let protocol = Arc::new(Self::new(config, subnetwork, discovery, utp_socket));
+        protocol.start();
+        Ok(protocol)
     }
 
     pub fn new(
+        config: ProtocolConfig,
         subnetwork: Subnetwork,
         discovery: Arc<Discovery>,
         utp_socket: Arc<UtpSocket<UtpPeer>>,
-        outgoing_semaphore: Arc<Semaphore>,
     ) -> Self {
+        let outgoing_semaphore = Arc::new(Semaphore::new(config.outgoing_talk_request_capacity));
         Self {
+            config,
             subnetwork,
             discovery,
             utp_socket,
@@ -108,6 +83,29 @@ where
             _phantom_content_key: PhantomData,
             _phantom_metric: PhantomData,
         }
+    }
+
+    pub fn start(self: &Arc<Self>) {
+        let protocol = Arc::clone(self);
+
+        let (query_rx, mut query_tx) =
+            mpsc::channel(protocol.config.incoming_talk_request_capacity);
+        protocol
+            .discovery
+            .register_handler(protocol.subnetwork, query_rx);
+
+        tokio::spawn(async move {
+            loop {
+                let Some((enr, talk_request)) = query_tx.recv().await else {
+                    warn!(subnetwork=%protocol.subnetwork, "Query channel closed");
+                    break;
+                };
+                if let Err(err) = protocol.process_incoming_talk_request(enr, talk_request) {
+                    error!(%err, "Error processing incoming TALKREQ");
+                }
+            }
+        });
+        info!(subnetwork=%self.subnetwork, "Subnetwork Service started");
     }
 
     fn process_incoming_talk_request(
@@ -191,11 +189,11 @@ where
     }
 
     fn process_incoming_offer(&self, _enr: Enr, offer: Offer) -> anyhow::Result<Accept> {
-        let accepted_keys = BitList::with_capacity(offer.content_keys.len())
-            .expect("should be able to create Bitlist");
+        let accept_code_list = AcceptCodeList::new(offer.content_keys.len())
+            .expect("should be able to create AcceptCodeList");
         Ok(Accept {
             connection_id: 0,
-            content_keys: accepted_keys,
+            content_keys: accept_code_list.encode(ProtocolVersion::V0)?,
         })
     }
 
