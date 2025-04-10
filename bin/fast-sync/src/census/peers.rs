@@ -19,12 +19,18 @@ use super::peer::Peer;
 /// How frequently liveness check should be done.
 ///
 /// Five minutes is chosen arbitrarily.
-const LIVENESS_CHECK_DELAY: Duration = Duration::from_secs(300);
+const LIVENESS_CHECK_DELAY: Duration = Duration::from_secs(/* 5 min = */ 5 * 60);
+
+/// Returns random duration `LIVENESS_CHECK_DELAY` and `2*LIVENESS_CHECK_DELAY`
+fn get_random_liveness_check_delay() -> Duration {
+    let default_delay = LIVENESS_CHECK_DELAY.as_secs_f64();
+    let delay = (1. + rand::random::<f64>()) * default_delay;
+    Duration::from_secs_f64(delay)
+}
 
 /// Stores peers and when they should be checked for liveness.
 ///
 /// Convinient structure for holding both objects behind single [RwLock].
-#[derive(Debug)]
 struct PeersWithLivenessChecks {
     /// Stores peers and their info
     peers: HashMap<NodeId, Peer>,
@@ -36,7 +42,7 @@ struct PeersWithLivenessChecks {
 ///
 /// It provides thread safe access to peers and is responsible for deciding when they should be
 /// pinged for liveness.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Peers {
     peers: Arc<RwLock<PeersWithLivenessChecks>>,
 }
@@ -71,7 +77,9 @@ impl Peers {
             .entry(node_id)
             .or_insert_with(|| Peer::new(enr.clone()))
             .record_successful_liveness_check(enr.clone(), radius);
-        guard.liveness_checks.insert(node_id);
+        guard
+            .liveness_checks
+            .insert_at(node_id, get_random_liveness_check_delay());
     }
 
     pub fn record_failed_liveness_check(&self, enr: &Enr) {
@@ -86,7 +94,15 @@ impl Peers {
         if peer.is_obsolete() {
             guard.liveness_checks.remove(&node_id);
         } else {
-            guard.liveness_checks.insert(node_id);
+            guard
+                .liveness_checks
+                .insert_at(node_id, get_random_liveness_check_delay());
+        }
+    }
+
+    pub fn record_rpc_result(&self, peer: &NodeId, success: bool) {
+        if let Some(peer) = self.write().peers.get_mut(peer) {
+            peer.record_rpc_result(success);
         }
     }
 
@@ -112,7 +128,8 @@ impl Peers {
     }
 
     pub fn select_peers(&self, content_id: &[u8; 32]) -> Vec<(Enr, Distance)> {
-        self.read()
+        let peers = self
+            .read()
             .peers
             .values()
             .filter(|peer| peer.is_alive() && peer.is_content_within_radius(content_id))
@@ -120,7 +137,9 @@ impl Peers {
                 XorMetric::distance(&peer.node_id().raw(), content_id).big_endian_u32()
             })
             .map(|peer| (peer.enr(), peer.radius()))
-            .collect()
+            .collect();
+        // ADD PEER SCORING
+        peers
     }
 
     fn read(&self) -> RwLockReadGuard<'_, PeersWithLivenessChecks> {
@@ -129,6 +148,25 @@ impl Peers {
 
     fn write(&self) -> RwLockWriteGuard<'_, PeersWithLivenessChecks> {
         self.peers.write().expect("to get peers lock")
+    }
+
+    pub fn debug_table(&self) -> String {
+        let rows = self
+            .read()
+            .peers
+            .values()
+            .sorted_by(|a, b| b.reputation().partial_cmp(&a.reputation()).unwrap())
+            .map(|peer| {
+                format!(
+                    "{:6.2} | {:5} | {:10} | {:12}",
+                    peer.reputation(),
+                    peer.is_alive(),
+                    peer.client(),
+                    peer.node_id()
+                )
+            })
+            .join("\n");
+        format!("\nPeers:\n score | alive |     client |      node_id\n{rows}")
     }
 }
 

@@ -12,7 +12,11 @@ use discv5::{
     ConfigBuilder, Discv5, Enr, TalkRequest,
 };
 use ethportal_api::{
-    types::{network::Subnetwork, portal_wire::MAINNET},
+    types::{
+        network::Subnetwork,
+        portal_wire::MAINNET,
+        protocol_versions::{ProtocolVersion, ProtocolVersionList, ENR_PROTOCOL_VERSION_KEY},
+    },
     utils::bytes::{hex_decode, hex_encode_upper},
 };
 use lru::LruCache;
@@ -86,6 +90,12 @@ impl Discovery {
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("Should be able to get seconds since epoch")
                 .as_secs(),
+        );
+
+        // Add V0 supported versio
+        enr_builder.add_value(
+            ENR_PROTOCOL_VERSION_KEY,
+            &ProtocolVersionList::new(vec![ProtocolVersion::V0]),
         );
 
         let enr = enr_builder.build(&enr_key).expect("able to build ENR");
