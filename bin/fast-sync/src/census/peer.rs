@@ -17,6 +17,8 @@ pub struct Peer {
     radius: Distance,
     reputation: f32,
     liveness_checks: VecDeque<LivenessCheck>,
+    rpc_success: u32,
+    rpc_failure: u32,
 }
 
 impl Peer {
@@ -31,6 +33,8 @@ impl Peer {
             radius: Distance::ZERO,
             reputation: REPUTATION_START_VALUE,
             liveness_checks: VecDeque::with_capacity(Self::MAX_LIVENESS_CHECKS + 1),
+            rpc_success: 0,
+            rpc_failure: 0,
         }
     }
 
@@ -52,6 +56,14 @@ impl Peer {
 
     pub fn reputation(&self) -> f32 {
         self.reputation
+    }
+
+    pub fn rpc_success(&self) -> u32 {
+        self.rpc_success
+    }
+
+    pub fn rpc_failure(&self) -> u32 {
+        self.rpc_failure
     }
 
     pub fn is_alive(&self) -> bool {
@@ -105,6 +117,11 @@ impl Peer {
     }
 
     pub fn record_rpc_result(&mut self, success: bool) {
+        if success {
+            self.rpc_success += 1;
+        } else {
+            self.rpc_failure += 1;
+        }
         update_reputation(&mut self.reputation, success);
     }
 
@@ -129,6 +146,10 @@ impl Debug for Peer {
             .field("is_alive", &self.is_alive())
             .field("node_id", &self.node_id())
             .field("reputation", &self.reputation)
+            .field(
+                "rpc_status",
+                &format!("{}/{}", self.rpc_success, self.rpc_failure),
+            )
             .finish_non_exhaustive()
     }
 }

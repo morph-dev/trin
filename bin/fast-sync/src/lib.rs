@@ -66,16 +66,22 @@ pub struct Args {
     #[arg(long = "discv5.timeout", default_value_t = 5000)]
     pub discv5_timeout_ms: u64,
 
-    #[arg(long = "utp.concurrency", default_value_t = 1000)]
-    pub utp_concurrency: usize,
+    #[arg(long = "concurrency.utp", default_value_t = 1000)]
+    pub concurrency_utp: usize,
 
-    #[arg(long, default_value_t = 100)]
-    pub concurrency: usize,
+    #[arg(long = "concurrency.census", default_value_t = 100)]
+    pub concurrency_census: usize,
+
+    #[arg(long = "concurrency.out", default_value_t = 200)]
+    pub concurrency_out: usize,
+
+    #[arg(long = "concurrency.in", default_value_t = 400)]
+    pub concurrency_in: usize,
 
     #[arg(long, default_value_t = 1000)]
     pub batch_size: usize,
 
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, default_value_t = 100)]
     pub max_attempts: usize,
 }
 
@@ -98,7 +104,7 @@ impl FastSync {
         let discovery = Discovery::spawn(args.into()).await?;
 
         // Setup uTP
-        let (utp_tx, utp_rx) = mpsc::channel(args.utp_concurrency);
+        let (utp_tx, utp_rx) = mpsc::channel(args.concurrency_utp);
         discovery.register_handler(Subnetwork::Utp, utp_tx);
         let utp_socket = Arc::new(UtpSocket::with_socket(Discovery5UtpSocket::new(
             &discovery, utp_rx,
@@ -112,8 +118,8 @@ impl FastSync {
 
         let protocol = Protocol::<HistoryContentKey, XorMetric>::spawn(
             ProtocolConfig {
-                incoming_talk_request_capacity: args.concurrency,
-                outgoing_talk_request_capacity: args.concurrency,
+                incoming_talk_request_capacity: args.concurrency_in,
+                outgoing_talk_request_capacity: args.concurrency_out,
             },
             Subnetwork::History,
             discovery.clone(),
@@ -122,7 +128,7 @@ impl FastSync {
 
         let census = Census::<HistoryContentKey, XorMetric>::spawn(
             Arc::clone(&protocol),
-            args.concurrency,
+            args.concurrency_census,
             &bootnodes,
         )
         .await?;
@@ -146,7 +152,7 @@ impl FastSync {
     pub fn heartbeat(&self) {
         let peers = self.history.peers().clone();
         tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_secs(60));
+            let mut heartbeat_interval = interval(Duration::from_secs(10));
             loop {
                 heartbeat_interval.tick().await;
                 info!("{}", peers.debug_table());
