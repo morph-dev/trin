@@ -3,6 +3,9 @@ use std::{collections::VecDeque, fmt::Debug, time::Instant};
 use discv5::{enr::NodeId, Enr};
 use ethportal_api::types::distance::{Distance, Metric, XorMetric};
 
+use super::reputation::{update_reputation, REPUTATION_START_VALUE};
+use crate::utils::get_client_info;
+
 #[derive(Debug, Clone)]
 pub struct LivenessCheck {
     pub success: bool,
@@ -22,17 +25,11 @@ impl Peer {
     /// The peers is considered alive is any of this many recent liveness checks was successful.
     const RECENT_LIVE_CHECKS: usize = 2;
 
-    const REPUTATION_START_VALUE: f32 = 50.;
-    const REPUTATION_MIN_VALUE: f32 = 1.;
-    const REPUTATION_MAX_VALUE: f32 = 100.;
-    const REPUTATION_BOOST: f32 = 1.;
-    const REPUTATION_SLASHING_FACTOR: f32 = 0.5;
-
     pub fn new(enr: Enr) -> Self {
         Self {
             enr,
             radius: Distance::ZERO,
-            reputation: Self::REPUTATION_START_VALUE,
+            reputation: REPUTATION_START_VALUE,
             liveness_checks: VecDeque::with_capacity(Self::MAX_LIVENESS_CHECKS + 1),
         }
     }
@@ -41,11 +38,8 @@ impl Peer {
         self.enr.clone()
     }
 
-    pub fn client(&self) -> String {
-        self.enr
-            .get_decodable::<String>("c")
-            .and_then(|client| client.ok())
-            .unwrap_or("(unknown)".to_string())
+    pub fn client_info(&self) -> String {
+        get_client_info(&self.enr)
     }
 
     pub fn node_id(&self) -> NodeId {
@@ -111,14 +105,7 @@ impl Peer {
     }
 
     pub fn record_rpc_result(&mut self, success: bool) {
-        if success {
-            self.reputation += Self::REPUTATION_BOOST;
-        } else {
-            self.reputation *= Self::REPUTATION_SLASHING_FACTOR;
-        }
-        self.reputation = self
-            .reputation
-            .clamp(Self::REPUTATION_MIN_VALUE, Self::REPUTATION_MAX_VALUE);
+        update_reputation(&mut self.reputation, success);
     }
 
     /// Removes oldest liveness checks and offer events, if we exceeded capacity.

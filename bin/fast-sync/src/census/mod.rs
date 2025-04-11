@@ -4,10 +4,7 @@ use anyhow::bail;
 use discv5::{enr::NodeId, Enr};
 use ethportal_api::{
     generate_random_node_ids,
-    types::{
-        distance::{Distance, Metric},
-        ping_extensions::decode::PingExtension,
-    },
+    types::{distance::Metric, ping_extensions::decode::PingExtension},
     OverlayContentKey,
 };
 use futures::{future::JoinAll, StreamExt};
@@ -16,10 +13,11 @@ use peers::Peers;
 use tokio::{select, sync::Semaphore, time::Instant};
 use tracing::{error, info, warn};
 
-use crate::protocol::Protocol;
+use crate::{protocol::Protocol, utils::get_client_info};
 
 pub mod peer;
 pub mod peers;
+pub mod reputation;
 
 /// The result of the liveness check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,8 +158,8 @@ where
         let results = node_ids
             .iter()
             .flat_map(|node_id| {
-                self.closest_peers(node_id, Self::DISCOVERY_PEERS)
-                    .unwrap_or_default()
+                self.peers
+                    .closest_peers(node_id, Self::DISCOVERY_PEERS)
                     .into_iter()
                     .map(move |peer| (peer, node_id))
             })
@@ -178,15 +176,17 @@ where
                     for node_id in node_ids {
                         match self.protocol.send_find_nodes(&peer, node_id).await {
                             Ok(enrs) => {
-                                self.record_rpc_result(&peer.node_id(), /* success= */ true);
+                                self.peers
+                                    .record_rpc_result(&peer.node_id(), /* success= */ true);
                                 all_enrs.extend(enrs)
                             }
                             Err(err) => {
-                                self.record_rpc_result(&peer.node_id(), /* success= */ false);
+                                self.peers
+                                    .record_rpc_result(&peer.node_id(), /* success= */ false);
                                 error!(
                                     %err,
                                     peer_id=%peer.node_id(),
-                                    peer_client_info=?peer.get_decodable::<String>("c").and_then(|client| client.ok()),
+                                    peer_client_info=get_client_info(&peer),
                                     "peer_discovery: FIND_NODES failed",
                                 );
                             }
@@ -290,38 +290,19 @@ where
         LivenessResult::Pass
     }
 
-    pub fn record_rpc_result(&self, peer: &NodeId, success: bool) {
-        self.peers.record_rpc_result(peer, success);
-    }
-
-    pub fn peers_discovered(self: &Arc<Self>, peers: Vec<Enr>) {
-        let census = self.clone();
-        let unknown_peers = peers
+    pub fn peers_discovered(self: &Arc<Self>, discovered_peers: Vec<Enr>) {
+        let unknown_peers = discovered_peers
             .into_iter()
             .filter(|peer| self.peers.get_peer(&peer.node_id()).is_none())
             .collect::<Vec<_>>();
-        tokio::spawn(async move {
-            for peer in unknown_peers {
-                census.liveness_check(&peer).await;
-            }
-        });
-    }
-
-    pub fn closest_peers(&self, target: &NodeId, count: usize) -> Result<Vec<Enr>, CensusError> {
-        if self.peers.is_empty() {
-            return Err(CensusError::NoPeers);
+        if !unknown_peers.is_empty() {
+            info!("Discovered {} new peers: ", unknown_peers.len());
+            let census = self.clone();
+            tokio::spawn(async move {
+                for peer in unknown_peers {
+                    census.liveness_check(&peer).await;
+                }
+            });
         }
-        Ok(self.peers.closest_peers(target, count))
-    }
-
-    pub fn select_peers(&self, content_id: &[u8; 32]) -> Result<Vec<(Enr, Distance)>, CensusError> {
-        if self.peers.is_empty() {
-            return Err(CensusError::NoPeers);
-        }
-        Ok(self.peers.select_peers(content_id))
-    }
-
-    pub fn debug_table(&self) -> String {
-        self.peers.debug_table()
     }
 }

@@ -127,7 +127,10 @@ impl Peers {
             .collect()
     }
 
-    pub fn select_peers(&self, content_id: &[u8; 32]) -> Vec<(Enr, Distance)> {
+    /// Returns all alive peers that could have the content.
+    ///
+    /// Result contains peers (`Enr` and reputation), and is sorted by distance from content id.
+    pub fn interested_peers(&self, content_id: &[u8; 32]) -> Vec<(Enr, f32)> {
         let peers = self
             .read()
             .peers
@@ -136,9 +139,8 @@ impl Peers {
             .sorted_by_cached_key(|peer| {
                 XorMetric::distance(&peer.node_id().raw(), content_id).big_endian_u32()
             })
-            .map(|peer| (peer.enr(), peer.radius()))
+            .map(|peer| (peer.enr(), peer.reputation()))
             .collect();
-        // ADD PEER SCORING
         peers
     }
 
@@ -161,7 +163,7 @@ impl Peers {
                     "{:6.2} | {:5} | {:10} | {:12}",
                     peer.reputation(),
                     peer.is_alive(),
-                    peer.client(),
+                    peer.client_info(),
                     peer.node_id()
                 )
             })
