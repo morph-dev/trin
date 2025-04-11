@@ -160,15 +160,18 @@ impl Peers {
             .sorted_by(|a, b| b.reputation().partial_cmp(&a.reputation()).unwrap())
             .map(|peer| {
                 format!(
-                    "{:6.2} | {:5} | {:10} | {:12}",
+                    "{:6.2} | {:5} | {:10} | {:12} | 0x{:08x} | {:7}/{:<7} ",
                     peer.reputation(),
                     peer.is_alive(),
                     peer.client_info(),
-                    peer.node_id()
+                    peer.node_id(),
+                    peer.radius().big_endian_u32(),
+                    peer.rpc_success(),
+                    peer.rpc_failure(),
                 )
             })
             .join("\n");
-        format!("\nPeers:\n score | alive |     client |      node_id\n{rows}")
+        format!("\nPeers:\n score | alive |     client |      node_id |     radius | success/failure)\n{rows}")
     }
 }
 

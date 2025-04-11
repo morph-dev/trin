@@ -7,11 +7,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use tracing::{error, warn};
 
 use crate::{
-    census::{
-        peers::Peers,
-        reputation::{update_reputation, REPUTATION_MIN_VALUE},
-        Census,
-    },
+    census::{peers::Peers, reputation::update_reputation, Census},
     protocol::Protocol,
     types::FindContentResult,
     utils::get_client_info,
@@ -98,7 +94,7 @@ where
                 Ok(FindContentResult::Peers(other_peers)) => {
                     // Peer doesn't have content
                     self.census.peers_discovered(other_peers);
-                    *reputation = REPUTATION_MIN_VALUE;
+                    *reputation = 0.;
                 }
                 Err(err) => {
                     warn!(
