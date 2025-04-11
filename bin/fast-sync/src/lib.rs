@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
     str::FromStr,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use alloy::primitives::B256;
@@ -23,7 +23,7 @@ use humanize_duration::{prelude::DurationExt, Truncate};
 use network::{Network, NetworkConfig};
 use portalnet::discovery::UtpPeer;
 use protocol::{Protocol, ProtocolConfig};
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::interval};
 use tracing::{error, info};
 use utp_rs::socket::UtpSocket;
 use utp_socket::Discovery5UtpSocket;
@@ -33,6 +33,7 @@ pub mod discovery;
 pub mod network;
 pub mod protocol;
 pub mod types;
+pub mod utils;
 pub mod utp_socket;
 
 #[derive(Parser, Debug, Default, PartialEq, Eq, Clone)]
@@ -68,14 +69,14 @@ pub struct Args {
     #[arg(long = "utp.concurrency", default_value_t = 1000)]
     pub utp_concurrency: usize,
 
-    #[arg(long, default_value_t = 1000)]
+    #[arg(long, default_value_t = 100)]
     pub concurrency: usize,
 
     #[arg(long, default_value_t = 1000)]
     pub batch_size: usize,
 
     #[arg(long, default_value_t = 20)]
-    pub max_attemps: usize,
+    pub max_attempts: usize,
 }
 
 pub struct FastSync {
@@ -125,11 +126,10 @@ impl FastSync {
             &bootnodes,
         )
         .await?;
-        info!("{}", census.debug_table());
 
         let history = Network::new(
             NetworkConfig {
-                max_attemps: args.max_attemps,
+                max_attempts: args.max_attempts,
             },
             protocol,
             census,
@@ -141,6 +141,17 @@ impl FastSync {
             _utp_socket: utp_socket,
             history: Arc::new(history),
         })
+    }
+
+    pub fn heartbeat(&self) {
+        let peers = self.history.peers().clone();
+        tokio::spawn(async move {
+            let mut heartbeat_interval = interval(Duration::from_secs(60));
+            loop {
+                heartbeat_interval.tick().await;
+                info!("{}", peers.debug_table());
+            }
+        });
     }
 
     pub async fn fetch_block_bodies(
@@ -240,6 +251,7 @@ impl FastSync {
         let path = args.block_hashes_path.clone();
         let block_hashes_future = tokio::spawn(async move { load_block_hashes(&path).await });
         let fast_sync = Self::new(&args).await?;
+        fast_sync.heartbeat();
         fast_sync
             .fetch_block_bodies(block_hashes_future.await??)
             .await?;
