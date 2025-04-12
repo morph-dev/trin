@@ -5,6 +5,7 @@ use clap::{arg, Parser};
 use sync::Sync;
 
 pub mod census;
+pub mod coordinator;
 pub mod discovery;
 pub mod network;
 pub mod protocol;

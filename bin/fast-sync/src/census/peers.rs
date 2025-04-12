@@ -113,6 +113,15 @@ impl Peers {
             .map(|peer| (peer.enr(), peer.radius()))
     }
 
+    pub fn get_all_alive(&self) -> Vec<(Enr, Distance, f32)> {
+        self.read()
+            .peers
+            .values()
+            .filter(|peer| peer.is_alive())
+            .map(|peer| (peer.enr(), peer.radius(), peer.reputation()))
+            .collect()
+    }
+
     pub fn closest_peers(&self, target: &NodeId, count: usize) -> Vec<Enr> {
         let target = target.raw();
         self.read()
@@ -171,7 +180,7 @@ impl Peers {
                 )
             })
             .join("\n");
-        format!("\nPeers:\n score | alive |     client |      node_id |     radius | success/failure)\n{rows}")
+        format!("\nPeers:\n score | alive |     client |      node_id |     radius | success/failure\n{rows}")
     }
 }
 
