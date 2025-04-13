@@ -14,15 +14,15 @@ use ethportal_api::{
     types::{distance::XorMetric, network::Subnetwork},
     HistoryContentKey, HistoryContentValue,
 };
-use futures::future::JoinAll;
 use humanize_duration::{prelude::DurationExt, Truncate};
 use portalnet::discovery::UtpPeer;
 use tokio::{sync::mpsc, time::interval};
-use tracing::{error, info};
+use tracing::{debug, info, Level};
 use utp_rs::socket::UtpSocket;
 
 use crate::{
     census::Census,
+    coordinator::CoordinatorConfig,
     discovery::Discovery,
     network::{Network, NetworkConfig},
     protocol::{Protocol, ProtocolConfig},
@@ -30,7 +30,7 @@ use crate::{
     Args,
 };
 
-const BOOTNODES_PUBLIC: &[&str] = &[
+const BOOTNODES: &[&str] = &[
     "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
     "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
     "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
@@ -45,11 +45,15 @@ pub struct Sync {
 
 impl Sync {
     pub async fn run(args: Args) -> anyhow::Result<()> {
-        let path = args.block_hashes_path.clone();
-        let block_hashes_future = tokio::spawn(async move { load_block_hashes(&path).await });
+        let block_hashes_path = args.block_hashes_path.clone();
+        let block_hashes_future =
+            tokio::spawn(async move { load_block_hashes(&block_hashes_path).await });
+
         let fast_sync = Self::create(&args).await?;
         fast_sync.heartbeat();
+
         let block_hashes = block_hashes_future.await??;
+
         fast_sync.fetch_block_bodies(block_hashes).await?;
         Ok(())
     }
@@ -66,11 +70,6 @@ impl Sync {
         )));
 
         // Setup History Subnetwork
-        let bootnodes = BOOTNODES_PUBLIC
-            .iter()
-            .map(|bootnode| Enr::from_str(bootnode).unwrap())
-            .collect::<Vec<_>>();
-
         let protocol = Protocol::<HistoryContentKey, XorMetric>::spawn(
             ProtocolConfig {
                 incoming_talk_request_capacity: args.concurrency_in,
@@ -81,6 +80,10 @@ impl Sync {
             utp_socket.clone(),
         )?;
 
+        let bootnodes = BOOTNODES
+            .iter()
+            .map(|bootnode| Enr::from_str(bootnode).unwrap())
+            .collect::<Vec<_>>();
         let census = Census::<HistoryContentKey, XorMetric>::spawn(
             Arc::clone(&protocol),
             args.concurrency_census,
@@ -90,7 +93,12 @@ impl Sync {
 
         let history = Network::new(
             NetworkConfig {
-                max_attempts: args.max_attempts,
+                coordinator_config: CoordinatorConfig {
+                    max_attempts_per_content: args.max_attempts,
+                    concurrent_tasks_per_content: args.concurrency_per_content,
+                    concurrent_tasks_per_peer: args.concurrency_per_peer,
+                },
+                concurrent_tasks: args.concurrency_out,
             },
             protocol,
             census,
@@ -106,13 +114,15 @@ impl Sync {
 
     pub fn heartbeat(&self) {
         let peers = self.history.peers().clone();
-        tokio::spawn(async move {
-            let mut heartbeat_interval = interval(Duration::from_secs(10));
-            loop {
-                heartbeat_interval.tick().await;
-                info!("{}", peers.debug_table());
-            }
-        });
+        if tracing::enabled!(Level::DEBUG) {
+            tokio::spawn(async move {
+                let mut heartbeat_interval = interval(Duration::from_secs(60));
+                loop {
+                    heartbeat_interval.tick().await;
+                    debug!("{}", peers.debug_table());
+                }
+            });
+        }
     }
 
     pub async fn fetch_block_bodies(
@@ -135,13 +145,30 @@ impl Sync {
 
         let mut batch_start = self.args.first_block;
         while batch_start <= self.args.last_block {
+            let batch_start_time = Instant::now();
+
             let batch_end =
                 usize::min(batch_start + self.args.batch_size - 1, self.args.last_block);
+            let content_keys = block_hashes[batch_start..=batch_end]
+                .iter()
+                .map(|block_hash| HistoryContentKey::new_block_body(*block_hash))
+                .collect();
 
-            let batch_start_time = Instant::now();
-            let (success, failure) = self
-                .fetch_block_bodies_batch(&block_hashes[batch_start..=batch_end])
+            let content = self
+                .history
+                .batch_get_content::<HistoryContentValue>(content_keys)
                 .await?;
+            let (success, failure) = content.into_iter().fold(
+                (0, 0),
+                |(success, failure), (_content_key, content_value)| {
+                    if content_value.is_some() {
+                        (success + 1, failure)
+                    } else {
+                        (success, failure + 1)
+                    }
+                },
+            );
+
             info!(
                 "Finished block_bodies_batch {}-{} in {} = {}/{}",
                 batch_start,
@@ -165,47 +192,6 @@ impl Sync {
             total_failure,
         );
         Ok((total_success, total_failure))
-    }
-
-    pub async fn fetch_block_bodies_batch(
-        &self,
-        block_hashes: &[B256],
-    ) -> anyhow::Result<(usize, usize)> {
-        let mut success = 0;
-        let mut failure = 0;
-
-        let block_bodies = block_hashes
-            .iter()
-            .map(|block_hash| async {
-                let history = Arc::clone(&self.history);
-                let block_hash = *block_hash;
-                tokio::spawn(async move {
-                    let content_key = HistoryContentKey::new_block_body(block_hash);
-                    let block_body = history
-                        .get_content_value::<HistoryContentValue>(content_key)
-                        .await;
-                    (block_hash, block_body)
-                })
-                .await
-            })
-            .collect::<JoinAll<_>>()
-            .await;
-
-        for task_result in block_bodies {
-            let Ok((block_hash, block_body)) = task_result else {
-                failure += 1;
-                continue;
-            };
-            match block_body {
-                Ok(_block_body) => success += 1,
-                Err(err) => {
-                    error!("Block body for {block_hash} not fetched: {err}");
-                    failure += 1;
-                }
-            }
-        }
-
-        Ok((success, failure))
     }
 }
 

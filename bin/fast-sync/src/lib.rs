@@ -20,13 +20,23 @@ pub mod utp_socket;
     author = "https://github.com/ethereum/trin/graphs/contributors"
 )]
 pub struct Args {
-    #[arg(help = "The block number of the first block to fetch.")]
+    #[arg(
+        help = "The block number of the first block to fetch.",
+        default_value_t = 0
+    )]
     pub first_block: usize,
 
-    #[arg(help = "The block number of the last bloc to fetch.")]
+    #[arg(
+        help = "The block number of the last bloc to fetch.",
+        default_value_t = 0
+    )]
     pub last_block: usize,
 
-    #[arg(long, help = "Path to binary file that stores block hashes")]
+    #[arg(
+        long,
+        help = "Path to binary file that stores block hashes",
+        default_value = ""
+    )]
     pub block_hashes_path: OsString,
 
     #[arg(long)]
@@ -49,12 +59,15 @@ pub struct Args {
 
     #[arg(long = "concurrency.census", default_value_t = 100)]
     pub concurrency_census: usize,
-
+    #[arg(long = "concurrency.in", default_value_t = 400)]
+    pub concurrency_in: usize,
     #[arg(long = "concurrency.out", default_value_t = 200)]
     pub concurrency_out: usize,
 
-    #[arg(long = "concurrency.in", default_value_t = 400)]
-    pub concurrency_in: usize,
+    #[arg(long = "concurrency.per-content", default_value_t = 1)]
+    pub concurrency_per_content: usize,
+    #[arg(long = "concurrency.per-peer", default_value_t = 1)]
+    pub concurrency_per_peer: usize,
 
     #[arg(long, default_value_t = 1000)]
     pub batch_size: usize,

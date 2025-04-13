@@ -86,9 +86,9 @@ pub enum CreateTaskError {
 
 #[derive(Clone, Debug)]
 pub struct CoordinatorConfig {
-    max_tasks_per_content: usize,
-    max_tasks_per_peer: usize,
-    max_attempts_per_content: usize,
+    pub max_attempts_per_content: usize,
+    pub concurrent_tasks_per_content: usize,
+    pub concurrent_tasks_per_peer: usize,
 }
 
 /// Coordinates content fetching from the network
@@ -104,7 +104,7 @@ where
     K: OverlayContentKey,
     V: ContentValue<TContentKey = K>,
 {
-    pub fn new(config: CoordinatorConfig, content_keys: Vec<K>, peers: Peers) -> Self {
+    pub fn new(config: CoordinatorConfig, content_keys: Vec<K>, peers: &Peers) -> Self {
         let pending_content = content_keys
             .into_iter()
             .map(ContentInfo::new)
@@ -144,7 +144,8 @@ where
             .peers
             .values_mut()
             .filter(|peer| {
-                peer.useful && peer.content_in_progress.len() < self.config.max_tasks_per_peer
+                peer.useful
+                    && peer.content_in_progress.len() < self.config.concurrent_tasks_per_peer
             })
             .collect::<Vec<_>>();
 
@@ -179,7 +180,7 @@ where
 
             // Remove content that are currently on their capacity
             interested_content.retain(|content_info| {
-                content_info.active_tasks < self.config.max_tasks_per_content
+                content_info.active_tasks < self.config.concurrent_tasks_per_content
             });
 
             // Peer can't attempt any of the content at the moment. Skip this peer.
@@ -226,6 +227,7 @@ where
 
         match result {
             TaskResult::Success(content_value) => {
+                update_reputation(&mut peer_info.reputation, /* success= */ true);
                 self.pending_content.remove(&task.content_id);
                 self.finished_content
                     .insert(task.content_id, (task.content_key, Some(content_value)));
@@ -246,5 +248,16 @@ where
                     .insert(task.content_id, (task.content_key, None));
             }
         }
+    }
+
+    pub fn get_content(&mut self) -> HashMap<B256, (K, Option<Box<V>>)> {
+        if !self.pending_content.is_empty() {
+            panic!(
+                "Pending content still present! {} {}",
+                self.pending_content.len(),
+                self.finished_content.len()
+            );
+        }
+        self.finished_content.drain().collect()
     }
 }

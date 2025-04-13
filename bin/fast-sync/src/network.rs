@@ -1,13 +1,13 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
-use anyhow::bail;
-use discv5::Enr;
 use ethportal_api::{types::distance::Metric, ContentValue, OverlayContentKey};
-use rand::{seq::SliceRandom, thread_rng};
-use tracing::{error, warn};
+use futures::future::JoinAll;
+use tokio::sync::RwLock;
+use tracing::error;
 
 use crate::{
-    census::{peers::Peers, reputation::update_reputation, Census},
+    census::{peers::Peers, Census},
+    coordinator::{Coordinator, CoordinatorConfig, CreateTaskError, TaskResult},
     protocol::Protocol,
     types::FindContentResult,
     utils::get_client_info,
@@ -15,7 +15,8 @@ use crate::{
 
 #[derive(Clone)]
 pub struct NetworkConfig {
-    pub max_attempts: usize,
+    pub coordinator_config: CoordinatorConfig,
+    pub concurrent_tasks: usize,
 }
 
 pub struct Network<TContentKey, TMetric> {
@@ -53,60 +54,102 @@ where
         self.census.peers()
     }
 
-    pub async fn get_content_value<TContentValue: ContentValue<TContentKey = TContentKey>>(
+    pub async fn batch_get_content<TContentValue>(
         &self,
-        content_key: TContentKey,
-    ) -> anyhow::Result<TContentValue> {
-        let mut peers = self.peers().interested_peers(&content_key.content_id());
+        content_keys: Vec<TContentKey>,
+    ) -> anyhow::Result<Vec<(TContentKey, Option<Box<TContentValue>>)>>
+    where
+        TContentValue: 'static + Send + Sync + ContentValue<TContentKey = TContentKey>,
+    {
+        let coordinator = Arc::new(RwLock::new(Coordinator::<TContentKey, TContentValue>::new(
+            self.config.coordinator_config.clone(),
+            content_keys.clone(),
+            self.peers(),
+        )));
 
-        let on_rpc_result = |peer: &Enr, reputation: &mut f32, success: bool| {
-            self.peers().record_rpc_result(&peer.node_id(), success);
-            update_reputation(reputation, success);
-        };
+        (0..self.config.concurrent_tasks)
+            .map(|_| {
+                let coordinator = Arc::clone(&coordinator);
+                let census = Arc::clone(&self.census);
+                let protocol = Arc::clone(&self.protocol);
+                let peers = self.peers().clone();
+                tokio::spawn(async move {
+                    loop {
+                        let create_task_result = coordinator.write().await.create_task::<TMetric>();
+                        let task_info = match create_task_result {
+                            Ok(task_info) => task_info,
+                            Err(CreateTaskError::Busy) => {
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                continue;
+                            }
+                            Err(CreateTaskError::NoPeers | CreateTaskError::NoContent) => {
+                                return;
+                            }
+                        };
 
-        let mut attempts = 0;
-        while attempts < self.config.max_attempts {
-            attempts += 1;
-            let Ok((peer, reputation)) =
-                peers.choose_weighted_mut(&mut thread_rng(), |(_peer, reputation)| *reputation)
-            else {
-                bail!(
-                    "No peers available for content_key: {}",
-                    content_key.to_hex(),
-                );
-            };
-            match self.protocol.send_find_content(peer, &content_key).await {
-                Ok(FindContentResult::Content(content_value_bytes)) => {
-                    match TContentValue::decode(&content_key, &content_value_bytes) {
-                        Ok(block_body) => {
-                            on_rpc_result(peer, reputation, true);
-                            return Ok(block_body);
-                        }
-                        Err(err) => {
-                            error!(
-                                bytes=?content_value_bytes,
-                                "Can't decode content_value: {err:?}",
-                            );
-                            on_rpc_result(peer, reputation, false);
-                        }
+                        let task_result = match protocol
+                            .send_find_content(&task_info.peer, &task_info.content_key)
+                            .await
+                        {
+                            Ok(FindContentResult::Content(bytes)) => {
+                                match TContentValue::decode(&task_info.content_key, &bytes) {
+                                    Ok(content) => {
+                                        peers.record_rpc_result(
+                                            &task_info.peer.node_id(),
+                                            /* success= */ true,
+                                        );
+                                        TaskResult::Success(Box::new(content))
+                                    }
+                                    Err(err) => {
+                                        error!(
+                                            peer_id=%task_info.peer.node_id(),
+                                            peer_client_info=get_client_info(&task_info.peer),
+                                            "Error decoding content from peer: {err}",
+                                        );
+                                        peers.record_rpc_result(
+                                            &task_info.peer.node_id(),
+                                            /* success= */ false,
+                                        );
+                                        TaskResult::Failure
+                                    }
+                                }
+                            }
+                            Ok(FindContentResult::Peers(other_peers)) => {
+                                census.peers_discovered(other_peers);
+                                TaskResult::ContentUnavailable
+                            }
+                            Err(err) => {
+                                error!(
+                                    peer_id=%task_info.peer.node_id(),
+                                    peer_client_info=get_client_info(&task_info.peer),
+                                    "Error fetching content from peer: {err}",
+                                );
+                                peers.record_rpc_result(
+                                    &task_info.peer.node_id(),
+                                    /* success= */ false,
+                                );
+                                TaskResult::Failure
+                            }
+                        };
+
+                        coordinator
+                            .write()
+                            .await
+                            .on_task_finish(task_info, task_result);
                     }
-                }
-                Ok(FindContentResult::Peers(other_peers)) => {
-                    // Peer doesn't have content
-                    self.census.peers_discovered(other_peers);
-                    *reputation = 0.;
-                }
-                Err(err) => {
-                    warn!(
-                        peer_id=%peer.node_id(),
-                        peer_client_info=get_client_info(peer),
-                        "Error fetching content from peer: {err}",
-                    );
-                    on_rpc_result(peer, reputation, false);
-                }
-            }
-        }
+                })
+            })
+            .collect::<JoinAll<_>>()
+            .await;
 
-        bail!("Tried {attempts} times, content not fetched!",);
+        let mut content = coordinator.write().await.get_content();
+        Ok(content_keys
+            .into_iter()
+            .map(|content_key| {
+                content
+                    .remove(&content_key.content_id())
+                    .unwrap_or_else(|| (content_key, None))
+            })
+            .collect())
     }
 }

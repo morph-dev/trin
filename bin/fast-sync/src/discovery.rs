@@ -160,8 +160,7 @@ impl Discovery {
                             info!(protocol_id, "Unsupported protocol",);
                             continue;
                         };
-                        let handlers_mutex = handlers.lock();
-                        let Some(handler) = handlers_mutex.get(&subnetwork) else {
+                        let Some(handler) = handlers.lock().get(&subnetwork).cloned() else {
                             warn!(
                                 %subnetwork,
                                 "Received talk request but handler is not registered"
@@ -199,9 +198,10 @@ impl Discovery {
     }
 
     pub fn register_handler(&self, subnetwork: Subnetwork, handler: mpsc::Sender<EnrTalkRequest>) {
-        let mut handlers = self.handlers.lock();
-        assert!(!handlers.contains_key(&subnetwork));
-        handlers.insert(subnetwork, handler);
+        assert!(
+            self.handlers.lock().insert(subnetwork, handler).is_none(),
+            "Handler registered twice for subnetwork: {subnetwork}",
+        );
     }
 
     pub fn local_enr(&self) -> Enr {

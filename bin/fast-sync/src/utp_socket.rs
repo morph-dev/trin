@@ -51,9 +51,16 @@ impl AsyncUdpSocket<UtpPeer> for Discovery5UtpSocket {
 
     async fn recv_from(&mut self, mut buf: &mut [u8]) -> io::Result<(usize, Peer<UtpPeer>)> {
         match self.talk_request_rx.recv().await {
-            Some((peer, talk_req)) => buf
-                .write_all(talk_req.body())
-                .map(|_| (talk_req.body().len(), Peer::new(UtpPeer(peer)))),
+            Some((peer, talk_req)) => {
+                let result = (talk_req.body().len(), Peer::new(UtpPeer(peer)));
+                buf.write_all(talk_req.body())?;
+
+                // Respond with empty talk response
+                if let Err(err) = talk_req.respond(vec![]) {
+                    warn!(%err, "Failed to respond to uTP talk request");
+                }
+                Ok(result)
+            }
             None => Err(io::ErrorKind::NotConnected.into()),
         }
     }
