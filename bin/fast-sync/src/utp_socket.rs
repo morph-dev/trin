@@ -42,8 +42,13 @@ impl AsyncUdpSocket<UtpPeer> for Discovery5UtpSocket {
         };
         let data = buf.to_vec();
         tokio::spawn(async move {
+            let node_id = peer.node_id();
             if let Err(err) = discovery.send_talk_req(peer, Subnetwork::Utp, data).await {
-                warn!(%err, "uTP request failed")
+                warn!(
+                    peer = %node_id,
+                    %err,
+                    "uTP request failed",
+                );
             }
         });
         Ok(buf.len())

@@ -8,7 +8,7 @@ use ethportal_api::{
 use futures::future::JoinAll;
 use itertools::Itertools;
 use tokio::sync::RwLock;
-use tracing::{info, warn, Instrument};
+use tracing::{debug, info, warn, Instrument};
 
 use crate::{
     census::Census, protocol::Protocol, types::FindContentResult, utils::load_block_hashes, Args,
@@ -46,9 +46,12 @@ pub async fn find_peers(
         let content_per_peer = find_peers_args.content_per_peer;
 
         let task = async move {
+            let mut total_success = 0;
+            let mut total_unavailable = 0;
+            let mut total_error = 0;
             loop {
                 let Some((peer, radius, _reputation)) = peers.write().await.pop() else {
-                    return;
+                    return (total_success, total_unavailable, total_error);
                 };
                 let node_id = peer.node_id();
                 let raw_node_id = node_id.raw();
@@ -94,6 +97,9 @@ pub async fn find_peers(
                     }
                 }
 
+                total_success += success.len();
+                total_unavailable +=unavailable;
+                total_error += error;
                 info!(
                     "Finished peer: {node_id:?} - success={} unavailable={unavailable} error={error}",
                     success.len(),
@@ -107,19 +113,33 @@ pub async fn find_peers(
     })
     .collect::<JoinAll<_>>()
     .await;
+
+    let mut total_success = 0;
+    let mut total_unavailable = 0;
+    let mut total_error = 0;
     for task in tasks.into_iter().enumerate() {
-        if let (task_id, Err(err)) = task {
-            warn!(task_id, "Task failed: {err}");
+        match task {
+            (_task_id, Ok((success, unavailable, error))) => {
+                total_success += success;
+                total_unavailable += unavailable;
+                total_error += error;
+            }
+            (task_id, Err(err)) => {
+                warn!(task_id, "Task failed: {err}");
+            }
         }
     }
 
     let peer_content = peer_content.read().await.clone();
 
     info!(
-        "Finished! Peers with content: {}\n{}",
+        success = total_success,
+        unavailable = total_unavailable,
+        error = total_error,
+        "Finished! Peers with content: {}",
         peer_content.len(),
-        serde_json::to_string_pretty(&peer_content)?,
     );
+    debug!("\n{}", serde_json::to_string_pretty(&peer_content)?);
 
     let writer = BufWriter::new(File::create(&find_peers_args.output_file)?);
     serde_json::to_writer_pretty(writer, &peer_content)?;
