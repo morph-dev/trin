@@ -91,28 +91,12 @@ where
                             .send_find_content(&task_info.peer, &task_info.content_key)
                             .await
                         {
-                            Ok(FindContentResult::Content(bytes)) => {
-                                match TContentValue::decode(&task_info.content_key, &bytes) {
-                                    Ok(content) => {
-                                        peers.record_rpc_result(
-                                            &task_info.peer.node_id(),
-                                            /* success= */ true,
-                                        );
-                                        TaskResult::Success(Box::new(content))
-                                    }
-                                    Err(err) => {
-                                        error!(
-                                            peer_id=%task_info.peer.node_id(),
-                                            peer_client_info=get_client_info(&task_info.peer),
-                                            "Error decoding content from peer: {err}",
-                                        );
-                                        peers.record_rpc_result(
-                                            &task_info.peer.node_id(),
-                                            /* success= */ false,
-                                        );
-                                        TaskResult::Failure
-                                    }
-                                }
+                            Ok(FindContentResult::Content(content_value)) => {
+                                peers.record_rpc_result(
+                                    &task_info.peer.node_id(),
+                                    /* success= */ true,
+                                );
+                                TaskResult::Success(Box::new(content_value))
                             }
                             Ok(FindContentResult::Peers(other_peers)) => {
                                 census.peers_discovered(other_peers);

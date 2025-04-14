@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs::File, io::BufWriter, sync::Arc};
 use anyhow::bail;
 use ethportal_api::{
     types::distance::{Metric, XorMetric},
-    HistoryContentKey, OverlayContentKey,
+    HistoryContentKey, HistoryContentValue, OverlayContentKey,
 };
 use futures::future::JoinAll;
 use itertools::Itertools;
@@ -76,7 +76,7 @@ pub async fn find_peers(
                 let mut error = 0;
 
                 for (content_key, _distance) in content.into_iter().take(content_per_peer) {
-                    match history.send_find_content(&peer, content_key).await {
+                    match history.send_find_content::<HistoryContentValue>(&peer, content_key).await {
                         Ok(FindContentResult::Content(_)) => {
                             success.push(content_key.clone());
                         }

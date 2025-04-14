@@ -23,7 +23,7 @@ use ethportal_api::{
         },
         protocol_versions::ProtocolVersion,
     },
-    OverlayContentKey,
+    ContentValue, OverlayContentKey,
 };
 use portalnet::{discovery::UtpPeer, utp::controller::UTP_CONN_CFG};
 use ssz::{Decode, Encode};
@@ -278,11 +278,14 @@ where
         }
     }
 
-    pub async fn send_find_content(
+    pub async fn send_find_content<TContetnValue>(
         &self,
         enr: &Enr,
         content_key: &TContentKey,
-    ) -> anyhow::Result<FindContentResult> {
+    ) -> anyhow::Result<FindContentResult<TContetnValue>>
+    where
+        TContetnValue: ContentValue<TContentKey = TContentKey>,
+    {
         let _permit = self.outgoing_semaphore.acquire().await?;
         let find_content = FindContent {
             content_key: content_key.to_bytes(),
@@ -295,7 +298,7 @@ where
             message => bail!("Wrong response type! Expected CONTENT received: {message:?}"),
         };
 
-        match response {
+        let content_bytes = match response {
             Content::ConnectionId(conn_id) => {
                 let conn_id = u16::from_be(conn_id);
                 let cid = utp_rs::cid::ConnectionId {
@@ -312,12 +315,18 @@ where
                 let mut buf = Vec::with_capacity(/* 1MB */ 1 << 20);
                 utp_stream.read_to_eof(&mut buf).await?;
 
-                Ok(FindContentResult::Content(buf.into()))
+                buf.into()
             }
-            Content::Content(bytes) => Ok(FindContentResult::Content(bytes)),
-            Content::Enrs(ssz_enrs) => Ok(FindContentResult::Peers(
-                ssz_enrs.into_iter().map(|enr| enr.0).collect(),
-            )),
-        }
+            Content::Content(bytes) => bytes,
+            Content::Enrs(ssz_enrs) => {
+                return Ok(FindContentResult::Peers(
+                    ssz_enrs.into_iter().map(|enr| enr.0).collect(),
+                ))
+            }
+        };
+
+        TContetnValue::decode(content_key, &content_bytes)
+            .map(FindContentResult::Content)
+            .map_err(|err| anyhow!("Error decoding received content value: {err}"))
     }
 }
