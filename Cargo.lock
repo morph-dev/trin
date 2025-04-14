@@ -2617,6 +2617,8 @@ dependencies = [
  "parking_lot 0.11.2",
  "portalnet",
  "rand 0.8.5",
+ "serde",
+ "serde_json",
  "ssz_types",
  "thiserror 1.0.69",
  "tokio",

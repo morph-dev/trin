@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use discv5::{enr::NodeId, Enr};
@@ -11,13 +11,19 @@ use futures::{future::JoinAll, StreamExt};
 use itertools::Itertools;
 use peers::Peers;
 use tokio::{select, sync::Semaphore, time::Instant};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{protocol::Protocol, utils::get_client_info};
 
 pub mod peer;
 pub mod peers;
 pub mod reputation;
+
+const BOOTNODES: &[&str] = &[
+    "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+    "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
+    "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+];
 
 /// The result of the liveness check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,8 +52,6 @@ pub struct Census<TContentKey, TMetric> {
     protocol: Arc<Protocol<TContentKey, TMetric>>,
     peers: Peers,
     semaphore: Arc<Semaphore>,
-    _phantom_content_key: PhantomData<TContentKey>,
-    _phantom_metric: PhantomData<TMetric>,
 }
 
 impl<TContentKey, TMetric> Census<TContentKey, TMetric>
@@ -63,10 +67,9 @@ where
     pub async fn spawn(
         protocol: Arc<Protocol<TContentKey, TMetric>>,
         concurrency: usize,
-        bootnodes: &[Enr],
     ) -> Result<Arc<Self>, CensusError> {
         let census = Arc::new(Self::new(protocol, concurrency));
-        census.init(bootnodes).await?;
+        census.init().await?;
         census.start();
         Ok(census)
     }
@@ -76,25 +79,23 @@ where
             protocol,
             peers: Peers::new(),
             semaphore: Arc::new(Semaphore::new(concurrency)),
-            _phantom_content_key: PhantomData,
-            _phantom_metric: PhantomData,
         }
     }
 
-    pub async fn init(&self, bootnodes: &[Enr]) -> Result<(), CensusError> {
+    pub async fn init(&self) -> Result<(), CensusError> {
         info!("init: started");
 
-        bootnodes
-            .iter()
-            .map(|bootnode| async {
-                match self.liveness_check(bootnode).await {
-                    LivenessResult::Pass => info!("Bootnode {} is alive", bootnode.node_id()),
-                    LivenessResult::Fail => warn!("Bootnode {} is NOT alive", bootnode.node_id()),
-                    LivenessResult::Fresh => (),
-                }
-            })
-            .collect::<JoinAll<_>>()
-            .await;
+        for bootnode in BOOTNODES {
+            let Ok(bootnode) = Enr::from_str(bootnode) else {
+                error!("Can't decode bootnode Enr: {bootnode}");
+                continue;
+            };
+            match self.liveness_check(&bootnode).await {
+                LivenessResult::Pass => info!("Bootnode {} is alive", bootnode.node_id()),
+                LivenessResult::Fail => warn!("Bootnode {} is NOT alive", bootnode.node_id()),
+                LivenessResult::Fresh => (),
+            }
+        }
 
         loop {
             let new_peers = self.peer_discovery().await;
@@ -134,7 +135,7 @@ where
                     peer = peers.next() => {
                         match peer {
                             Some(peer) => {
-                                info!("background_task: checking liveness: {}", peer.node_id());
+                                debug!("background_task: checking liveness: {}", peer.node_id());
                                 census.liveness_check(&peer).await;
                             }
                             None => {
@@ -296,7 +297,7 @@ where
             .filter(|peer| self.peers.get_peer(&peer.node_id()).is_none())
             .collect::<Vec<_>>();
         if !unknown_peers.is_empty() {
-            info!("Discovered {} new peers: ", unknown_peers.len());
+            info!("Discovered {} new peers", unknown_peers.len());
             let census = self.clone();
             tokio::spawn(async move {
                 for peer in unknown_peers {
