@@ -61,10 +61,10 @@ pub struct Args {
     pub concurrency_census: usize,
     #[arg(long = "concurrency.in", default_value_t = 400)]
     pub concurrency_in: usize,
-    #[arg(long = "concurrency.out", default_value_t = 200)]
+    #[arg(long = "concurrency.out", default_value_t = 30)]
     pub concurrency_out: usize,
 
-    #[arg(long = "concurrency.per-content", default_value_t = 1)]
+    #[arg(long = "concurrency.per-content", default_value_t = 2)]
     pub concurrency_per_content: usize,
     #[arg(long = "concurrency.per-peer", default_value_t = 1)]
     pub concurrency_per_peer: usize,
@@ -89,7 +89,7 @@ pub struct FindPeersArgs {
     #[arg(default_value = "./bin/fast-sync/peer_content.json")]
     pub output_file: OsString,
 
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 20)]
     pub content_per_peer: usize,
 }
 

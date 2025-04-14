@@ -8,7 +8,7 @@ use ethportal_api::{
 use futures::future::JoinAll;
 use itertools::Itertools;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{info, warn, Instrument};
 
 use crate::{
     census::Census, protocol::Protocol, types::FindContentResult, utils::load_block_hashes, Args,
@@ -44,7 +44,8 @@ pub async fn find_peers(
         let content = content.clone();
         let peer_content = Arc::clone(&peer_content);
         let content_per_peer = find_peers_args.content_per_peer;
-        tokio::spawn(async move {
+
+        let task = async move {
             loop {
                 let Some((peer, radius, _reputation)) = peers.write().await.pop() else {
                     return;
@@ -66,8 +67,7 @@ pub async fn find_peers(
                     .collect::<Vec<_>>();
 
                 info!(
-                    task_id,
-                    "Starting peer: {node_id:?} - content in radius: {}",
+                    "Starting peer: {node_id:?} - eligible_content: {}",
                     content.len()
                 );
 
@@ -85,7 +85,6 @@ pub async fn find_peers(
                         }
                         Err(err) => {
                             warn!(
-                                task_id,
                                 %node_id,
                                 %content_key,
                                 "Error fetching content from peer: {err}",
@@ -96,7 +95,6 @@ pub async fn find_peers(
                 }
 
                 info!(
-                    task_id,
                     "Finished peer: {node_id:?} - success={} unavailable={unavailable} error={error}",
                     success.len(),
                 );
@@ -104,8 +102,11 @@ pub async fn find_peers(
                     peer_content.write().await.insert(peer, success);
                 }
             }
-        })
-    }).collect::<JoinAll<_>>().await;
+        };
+        tokio::spawn(task.instrument(tracing::info_span!("task", task_id)))
+    })
+    .collect::<JoinAll<_>>()
+    .await;
     for task in tasks.into_iter().enumerate() {
         if let (task_id, Err(err)) = task {
             warn!(task_id, "Task failed: {err}");
