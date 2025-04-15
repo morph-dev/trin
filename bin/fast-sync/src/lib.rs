@@ -14,9 +14,9 @@ use utp_rs::socket::UtpSocket;
 use utp_socket::Discovery5UtpSocket;
 
 pub mod census;
+pub mod commands;
 pub mod coordinator;
 pub mod discovery;
-pub mod find_peers;
 pub mod network;
 pub mod protocol;
 pub mod sync;
@@ -30,10 +30,16 @@ pub mod utp_socket;
     author = "https://github.com/ethereum/trin/graphs/contributors"
 )]
 pub struct Args {
-    #[arg(help = "The block number of the first block to fetch.")]
+    #[arg(
+        help = "The block number of the first block to fetch.",
+        default_value_t = 0
+    )]
     pub first_block: usize,
 
-    #[arg(help = "The block number of the last bloc to fetch.")]
+    #[arg(
+        help = "The block number of the last bloc to fetch.",
+        default_value_t = 0
+    )]
     pub last_block: usize,
 
     #[arg(long, help = "Path to binary file that stores block hashes")]
@@ -82,6 +88,7 @@ pub struct Args {
 #[derive(Subcommand, Clone, Debug, PartialEq, Eq)]
 pub enum FastSyncSubcommands {
     FindPeers(FindPeersArgs),
+    DirectFetch(DirectFetchArgs),
 }
 
 #[derive(ClapArgs, Clone, Debug, PartialEq, Eq)]
@@ -91,6 +98,15 @@ pub struct FindPeersArgs {
 
     #[arg(long, default_value_t = 20)]
     pub content_per_peer: usize,
+}
+
+#[derive(ClapArgs, Clone, Debug, PartialEq, Eq)]
+pub struct DirectFetchArgs {
+    #[arg(default_value = "./bin/fast-sync/peer_content.json")]
+    pub input_file: OsString,
+
+    #[arg(long)]
+    pub content_per_peer: Option<usize>,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -120,7 +136,10 @@ pub async fn run() -> anyhow::Result<()> {
     match &args.command {
         None => Sync::run(args, protocol).await?,
         Some(FastSyncSubcommands::FindPeers(find_peers_args)) => {
-            find_peers::find_peers(&args, find_peers_args, protocol).await?;
+            commands::find_peers::run(&args, find_peers_args, protocol).await?;
+        }
+        Some(FastSyncSubcommands::DirectFetch(direct_fetch_args)) => {
+            commands::direct_fetch::run(&args, direct_fetch_args, protocol).await?;
         }
     }
 
