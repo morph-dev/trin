@@ -67,7 +67,7 @@ pub struct Args {
     pub concurrency_census: usize,
     #[arg(long = "concurrency.in", default_value_t = 400)]
     pub concurrency_in: usize,
-    #[arg(long = "concurrency.out", default_value_t = 30)]
+    #[arg(long = "concurrency.out", default_value_t = 20)]
     pub concurrency_out: usize,
 
     #[arg(long = "concurrency.per-content", default_value_t = 2)]

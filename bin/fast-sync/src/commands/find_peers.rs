@@ -1,5 +1,6 @@
-use std::{collections::HashMap, fs::File, io::BufWriter, sync::Arc};
+use std::{fs::File, io::BufWriter, sync::Arc};
 
+use alloy::primitives::U256;
 use anyhow::bail;
 use ethportal_api::{
     types::distance::{Metric, XorMetric},
@@ -36,7 +37,7 @@ pub async fn run(
         .map(|block_hash| HistoryContentKey::new_block_body(*block_hash))
         .collect::<Vec<_>>();
 
-    let peer_content = Arc::new(RwLock::new(HashMap::new()));
+    let peer_content = Arc::new(RwLock::new(vec![]));
 
     let tasks = (0..args.concurrency_out)
         .map(|task_id| {
@@ -98,6 +99,9 @@ pub async fn run(
                         }
                     }
 
+                    // Sort alphabetically
+                    success.sort_by_cached_key(|content_key| content_key.to_bytes());
+
                     total_success += success.len();
                     total_unavailable +=unavailable;
                     total_error += error;
@@ -106,7 +110,7 @@ pub async fn run(
                         success.len(),
                     );
                     if !success.is_empty() {
-                        peer_content.write().await.insert(peer, success);
+                        peer_content.write().await.push((peer, success));
                     }
                 }
             };
@@ -131,7 +135,8 @@ pub async fn run(
         }
     }
 
-    let peer_content = peer_content.read().await.clone();
+    let mut peer_content = peer_content.read().await.clone();
+    peer_content.sort_by_cached_key(|(peer, _)| U256::from_be_bytes(peer.node_id().raw()));
 
     info!(
         success = total_success,

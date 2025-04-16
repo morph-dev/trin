@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc, time::Instant};
+use std::{fs::File, io::BufReader, sync::Arc, time::Instant};
 
 use discv5::Enr;
 use ethportal_api::{types::distance::XorMetric, HistoryContentKey, HistoryContentValue};
@@ -18,8 +18,10 @@ pub async fn run(
     let timer = Instant::now();
 
     let reader = BufReader::new(File::open(&direct_fetch_args.input_file)?);
-    let peer_content: HashMap<Enr, Vec<HistoryContentKey>> = serde_json::from_reader(reader)?;
-    let peer_content = Arc::new(RwLock::new(peer_content.into_iter().collect::<Vec<_>>()));
+
+    // Read and shuffle peer_content vector
+    let peer_content: Vec<(Enr, Vec<HistoryContentKey>)> = serde_json::from_reader(reader)?;
+    let peer_content = Arc::new(RwLock::new(peer_content));
     peer_content.write().await.shuffle(&mut thread_rng());
 
     let tasks = (0..args.concurrency_out)
