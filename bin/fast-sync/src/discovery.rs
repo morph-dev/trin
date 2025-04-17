@@ -14,7 +14,7 @@ use discv5::{
 use ethportal_api::{
     types::{
         network::Subnetwork,
-        portal_wire::MAINNET,
+        network_spec::MAINNET,
         protocol_versions::{ProtocolVersion, ProtocolVersionList, ENR_PROTOCOL_VERSION_KEY},
     },
     utils::bytes::{hex_decode, hex_encode_upper},
